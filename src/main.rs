@@ -32,6 +32,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let project_data = std::fs::read("../assets/main.toy")?;
 	let project = toy::load(&project_data)?;
 
+	let bones;
+
 	let mesh = gfx.core.new_mesh();
 	{
 		let mut mb = gfx::mesh_builder::MeshBuilder::new(mesh);
@@ -68,19 +70,58 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let toy_ent = project.find_entity("Cube").expect("Missing entity 'Cube'");
 		let toy_mesh = toy_ent.mesh_data().expect("'Cube' missing mesh data");
 
-		let transform = Mat4::translate(toy_ent.position)
+		let weight_data = toy_mesh.weight_data.as_ref().expect("'Cube' missing animation data");
+
+		bones = &weight_data.bones;
+
+		let model_transform = Mat4::translate(toy_ent.position)
 			* toy_ent.rotation.to_mat4()
 			* Mat4::scale(toy_ent.scale);
 
-		println!("{:?}", toy_ent);
 		println!("{:?}", toy_mesh);
 
-		let verts = toy_mesh.positions.iter()
-			.map(move |&v| vertex::ColorVertex::new(transform * v, color.into()) )
+		let verts = toy_mesh.positions.iter().zip(&weight_data.weights)
+			.map(move |(&pos, vertex_weight)| {
+				let toy::MeshWeightVertex{indices, weights} = *vertex_weight;
+
+				let indices = [
+					indices[0] as f32,
+					indices[1] as f32,
+					indices[2] as f32,
+				];
+
+				WeightedVertex::new(
+					model_transform * pos, color.into(),
+					indices, weights
+				)
+			})
 			.collect(): Vec<_>;
 
 		mb.add_geometry(&verts, &toy_mesh.indices);
 
+		mb.commit(&mut gfx.core);
+	}
+
+	let bone_line_mesh = gfx.core.new_mesh();
+	{
+		let mut mb = gfx::mesh_builder::MeshBuilder::new(bone_line_mesh);
+		let color = Color::rgb(0.0, 1.0, 1.0);
+
+		let verts = [
+			WeightedVertex::new(bones[0].head, color, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+			WeightedVertex::new(bones[0].tail, color, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+
+			WeightedVertex::new(bones[1].head, color, [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+			WeightedVertex::new(bones[1].tail, color, [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+
+			WeightedVertex::new(bones[2].head, color, [2.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+			WeightedVertex::new(bones[2].tail, color, [2.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+
+			WeightedVertex::new(bones[3].head, color, [3.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+			WeightedVertex::new(bones[3].tail, color, [3.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+		];
+
+		mb.add_geometry(&verts, 0..verts.len() as u16);
 		mb.commit(&mut gfx.core);
 	}
 
@@ -129,10 +170,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 		// gfx.ui.clear();
 		// gfx.ui.update(gfx.camera.forward(), near_plane_pos, aspect);
 
-		let trans_0 = Mat4::translate(Vec3::from_x(-0.5)) * Mat4::zrot((elapsed*2.1).sin() * 0.3) * Mat4::translate(Vec3::from_x(0.5));
-		let trans_1 = Mat4::translate(Vec3::from_y(-0.5)) * Mat4::yrot((elapsed*1.6).cos() * 0.5) * Mat4::translate(Vec3::from_y(0.5));
+		let offset_0 = bones[0].head;
+		let offset_1 = bones[1].head;
+		let offset_2 = bones[2].head;
+		let offset_3 = bones[3].head;
+
+		let trans_0 = Mat4::translate(offset_0) * Mat4::yrot((elapsed*0.5).sin() * 0.5) * Mat4::translate(-offset_0);
+		let trans_1 = Mat4::translate(offset_1) * Mat4::zrot((elapsed*1.0).sin() * 0.5) * Mat4::translate(-offset_1);
+		let trans_2 = Mat4::translate(offset_2) * Mat4::xrot((elapsed*0.7).sin() * 0.5) * Mat4::translate(-offset_2);
+		let trans_3 = Mat4::translate(offset_3) * Mat4::yrot((elapsed*2.0).sin() * 1.0) * Mat4::translate(-offset_3);
 
 		let bones = [
+			Bone::from_mat4(trans_0),
+			Bone::from_mat4(trans_1),
+			Bone::from_mat4(trans_2),
+			Bone::from_mat4(trans_3),
+			Bone::from_mat4(Mat4::ident()),
+			Bone::from_mat4(Mat4::ident()),
+			Bone::from_mat4(Mat4::ident()),
+			Bone::from_mat4(Mat4::ident()),
 			Bone::from_mat4(Mat4::ident()),
 			Bone::from_mat4(trans_0),
 			Bone::from_mat4(Mat4::translate(Vec3::new(0.0, 0.2 + 0.5 * (elapsed*1.2).sin(), 0.0))),
@@ -150,6 +206,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 		gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
 		gfx.core.draw_mesh(mesh);
+
+		unsafe {
+			gl::Disable(gl::DEPTH_TEST);
+		}
+
+		gfx.core.draw_mesh_lines(bone_line_mesh);
+
+		unsafe {
+			gl::Enable(gl::DEPTH_TEST);
+		}
 
 		window.swap();
 	}
@@ -209,7 +275,7 @@ fn update_bone_texture(buf_id: u32, bones: &[Bone]) {
 }
 
 
-const WEIGHTS_PER_VERTEX: usize = 2;
+const WEIGHTS_PER_VERTEX: usize = 3;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

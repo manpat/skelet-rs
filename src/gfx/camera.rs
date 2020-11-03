@@ -22,7 +22,7 @@ pub struct Camera {
 }
 
 
-const DEFAULT_VIEW_SIZE: f32 = 4.0;
+const DEFAULT_VIEW_SIZE: f32 = 5.0;
 const DEFAULT_YAW: f32 = PI/8.0;
 const DEFAULT_PITCH: f32 = -PI/6.0;
 

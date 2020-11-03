@@ -31,6 +31,7 @@ impl Window {
 			gl::BindVertexArray(vao);
 			
 			gl::PointSize(2.0);
+			gl::LineWidth(2.0);
 
 			gl::DebugMessageCallback(Some(gl_message_callback), std::ptr::null());
 			gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);

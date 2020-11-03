@@ -148,4 +148,20 @@ impl Core {
 			);
 		}
 	}
+
+	pub fn draw_mesh_lines<V: Vertex>(&mut self, id: MeshID<V>) {
+		self.bind_mesh(id);
+
+		let mesh = self.meshes.get(id.0).expect("Tried to bind invalid mesh");
+		mesh.descriptor.bind();
+
+		unsafe {
+			gl::DrawElements(
+				gl::LINES,
+				mesh.element_count as _,
+				gl::UNSIGNED_SHORT,
+				std::ptr::null()
+			);
+		}
+	}
 }
