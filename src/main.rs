@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		animations = animation_data.animations.iter().collect(): Vec<_>;
 		model_transform = toy_ent.transform();
 
-		println!("{:?}", toy_mesh);
+		// println!("{:?}", toy_mesh);
 
 		let verts = toy_mesh.positions.iter().zip(&animation_data.weights)
 			.map(move |(&pos, vertex_weight)| {
@@ -113,8 +113,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 		mb.commit(&mut gfx.core);
 	}
 
-	let (bone_tex_id, bone_buf_id) = generate_bone_texture();
+
+	let bone_buf = gfx.core.new_texture_buffer();
 	let mut elapsed = 0.0f32;
+
+	let mut anim_idx = 0;
 
 	'main_loop: loop {
 		// gfx.ui.clear_click_state();
@@ -131,9 +134,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 				// 	gfx.ui.on_mouse_move(mouse_pos);
 				// }
 
-				// WindowEvent::MouseInput {state: Pressed, button: LeftMouse, ..} => {
-				// 	gfx.ui.on_mouse_click();
-				// }
+				WindowEvent::MouseInput {state: Pressed, button: LeftMouse, ..} => {
+					// gfx.ui.on_mouse_click();
+					anim_idx = (anim_idx+1) % animations.len();
+					elapsed = 0.0;
+					println!("animation: {}", animations[anim_idx].name);
+				}
 
 				WindowEvent::CloseRequested => {
 					break 'main_loop
@@ -158,8 +164,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 		// gfx.ui.clear();
 		// gfx.ui.update(gfx.camera.forward(), near_plane_pos, aspect);
 
-		let anim_idx = (elapsed / 3.0) as usize % animations.len();
-
 		let mut bone_frames = Vec::new();
 		for (channel, bone) in animations[anim_idx].channels.iter().zip(bones.iter()) {
 			let frame = (elapsed*animations[anim_idx].fps) as usize % channel.frames.len();
@@ -172,15 +176,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			bone_frames.push(BoneFrame::from_mat4(trans));
 		}
 
-		update_bone_texture(bone_buf_id, &bone_frames);
+		gfx.core.update_texture_buffer(bone_buf, &bone_frames);
 
 		gfx.core.use_shader(weighted_shader);
-
-		unsafe {
-			gl::BindTexture(gl::TEXTURE_BUFFER, bone_tex_id);
-			gfx.core.set_uniform_i32("u_bone_tex", 0);
-		}
-
+		gfx.core.set_uniform_texture_buffer("u_bone_tex", bone_buf, 0);
 		gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
 		gfx.core.set_uniform_mat4("u_object", &model_transform);
 		gfx.core.draw_mesh(mesh);
@@ -209,6 +208,7 @@ fn window_to_screen(window_size: Vec2i, pos: Vec2) -> Vec2 {
 
 
 #[repr(C)]
+#[derive(Copy, Clone, Debug)]
 struct BoneFrame {
 	rows: [Vec4; 3],
 }
@@ -221,35 +221,6 @@ impl BoneFrame {
 	}
 }
 
-fn generate_bone_texture() -> (u32, u32) {
-	let (mut tex_id, mut buf_id) = (0, 0);
-	unsafe {
-		gl::GenTextures(1, &mut tex_id);
-		gl::GenBuffers(1, &mut buf_id);
-
-		gl::BindBuffer(gl::TEXTURE_BUFFER, buf_id);
-		gl::BindTexture(gl::TEXTURE_BUFFER, tex_id);
-		gl::TexBuffer(gl::TEXTURE_BUFFER, gl::RGBA32F, buf_id);
-	}
-
-
-	(tex_id, buf_id)
-}
-
-fn update_bone_texture(buf_id: u32, bones: &[BoneFrame]) {
-	let buffer_size = bones.len() * std::mem::size_of::<BoneFrame>();
-	assert!(buffer_size < 65536); // GL_MAX_TEXTURE_BUFFER_SIZE
-
-	unsafe {
-		gl::BindBuffer(gl::TEXTURE_BUFFER, buf_id);
-		gl::BufferData(
-			gl::TEXTURE_BUFFER,
-			buffer_size as _,
-			bones.as_ptr() as _,
-			gl::STREAM_DRAW
-		);
-	}
-}
 
 
 const WEIGHTS_PER_VERTEX: usize = 3;

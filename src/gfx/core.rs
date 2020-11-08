@@ -3,15 +3,16 @@ use std::marker::PhantomData;
 
 use crate::prelude::*;
 
-use super::mesh_builder::MeshBuilder;
 use super::shader::*;
 use super::vertex::*;
 use super::mesh::*;
+use super::texture_buffer::*;
 
 
 pub struct Core {
 	shaders: Vec<Shader>,
 	meshes: Vec<Mesh>,
+	texture_buffers: Vec<TextureBuffer>,
 
 	bound_shader: Option<ShaderID>,
 	bound_mesh: Option<UntypedMeshID>,
@@ -23,6 +24,7 @@ impl Core {
 		Core {
 			shaders: Vec::new(),
 			meshes: Vec::new(),
+			texture_buffers: Vec::new(),
 
 			bound_shader: None,
 			bound_mesh: None,
@@ -82,24 +84,34 @@ impl Core {
 		}
 	}
 
-	pub fn set_uniform_i32(&mut self, name: &str, value: i32) {
+	fn get_uniform_location(&self, name: &str) -> i32 {
 		unsafe {
 			let shader_id = self.bound_shader.unwrap();
 			let shader = &self.shaders[shader_id.0];
 			let name = std::ffi::CString::new(name.as_bytes()).unwrap();
-
-			let loc = gl::GetUniformLocation(shader.handle, name.as_ptr());
-			gl::Uniform1i(loc, value);
+			gl::GetUniformLocation(shader.handle, name.as_ptr())
 		}
 	}
-	pub fn set_uniform_mat4(&mut self, name: &str, value: &Mat4) {
-		unsafe {
-			let shader_id = self.bound_shader.unwrap();
-			let shader = &self.shaders[shader_id.0];
-			let name = std::ffi::CString::new(name.as_bytes()).unwrap();
 
-			let loc = gl::GetUniformLocation(shader.handle, name.as_ptr());
+	pub fn set_uniform_i32(&mut self, name: &str, value: i32) {
+		let loc = self.get_uniform_location(name);
+		unsafe { gl::Uniform1i(loc, value) }
+	}
+
+	pub fn set_uniform_mat4(&mut self, name: &str, value: &Mat4) {
+		let loc = self.get_uniform_location(name);
+		unsafe {
 			gl::UniformMatrix4fv(loc, 1, 0, &value.transpose() as *const _ as *const f32);
+		}
+	}
+
+	pub fn set_uniform_texture_buffer<V: Copy>(&mut self, name: &str, buffer: TextureBufferID<V>, slot: u32) {
+		let loc = self.get_uniform_location(name);
+		let buffer = self.texture_buffers.get(buffer.0).expect("Tried to bind invalid texture buffer");
+		unsafe {
+			gl::ActiveTexture(gl::TEXTURE0 + slot);
+			gl::BindTexture(gl::TEXTURE_BUFFER, buffer.texture_id);
+			gl::Uniform1i(loc, slot as _)
 		}
 	}
 
@@ -171,6 +183,33 @@ impl Core {
 				mesh.element_count as _,
 				gl::UNSIGNED_SHORT,
 				std::ptr::null()
+			);
+		}
+	}
+
+	// TextureBuffers
+	pub fn new_texture_buffer<V: Copy>(&mut self) -> TextureBufferID<V> {
+		self.texture_buffers.push(TextureBuffer::new());
+		TextureBufferID(self.texture_buffers.len()-1, PhantomData)
+	}
+
+	pub fn update_texture_buffer<V: Copy>(&mut self, id: TextureBufferID<V>, data: &[V]) {
+		let buffer_size = data.len() * std::mem::size_of::<V>();
+		assert!(buffer_size < 65536,
+			"Texture buffer size exceeds minimum guaranteed value of GL_MAX_TEXTURE_BUFFER_SIZE");
+
+		assert!(buffer_size % (std::mem::size_of::<f32>() * 4) == 0,
+			"Texture buffer data mis-sized; currently only support 4xf32 format data");
+
+		let buffer = self.texture_buffers.get(id.0).expect("Tried to update invalid texture buffer");
+
+		unsafe {
+			gl::BindBuffer(gl::TEXTURE_BUFFER, buffer.buffer_id);
+			gl::BufferData(
+				gl::TEXTURE_BUFFER,
+				buffer_size as _,
+				data.as_ptr() as _,
+				gl::STREAM_DRAW
 			);
 		}
 	}
