@@ -34,6 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	let bones;
 	let animations;
+	let model_transform;
 
 	let mesh = gfx.core.new_mesh();
 	{
@@ -47,10 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 		bones = &animation_data.bones;
 		animations = animation_data.animations.iter().collect(): Vec<_>;
-
-		let model_transform = Mat4::translate(toy_ent.position)
-			* toy_ent.rotation.to_mat4()
-			* Mat4::scale(toy_ent.scale);
+		model_transform = toy_ent.transform();
 
 		println!("{:?}", toy_mesh);
 
@@ -64,10 +62,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 					indices[2] as f32,
 				];
 
-				WeightedVertex::new(
-					/*model_transform **/ pos, color.into(),
-					indices, weights
-				)
+				WeightedVertex::new(pos, color.into(), indices, weights)
 			})
 			.collect(): Vec<_>;
 
@@ -99,14 +94,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let color = Color::rgb(1.0, 1.0, 0.0);
 
 		for toy_ent in project.entities() {
+			if toy_ent.name == "Cube" { continue }
+
 			let toy_mesh = match toy_ent.mesh_data() {
 				Some(m) => m,
 				None => continue
 			};
 
-			let model_transform = Mat4::translate(toy_ent.position)
-				* toy_ent.rotation.to_mat4()
-				* Mat4::scale(toy_ent.scale);
+			let model_transform = toy_ent.transform();
 
 			let verts = toy_mesh.positions.iter()
 				.map(move |&pos| ColorVertex::new(model_transform * pos, color.into()))
@@ -187,21 +182,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 
 		gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
+		gfx.core.set_uniform_mat4("u_object", &model_transform);
 		gfx.core.draw_mesh(mesh);
 
-		unsafe {
-			gl::Disable(gl::DEPTH_TEST);
-		}
+		gfx.core.use_shader(basic_shader);
+		gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
+		gfx.core.draw_mesh(marker_mesh);
 
+		gfx.core.use_shader(weighted_shader);
+		gfx.core.set_depth_test(false);
 		gfx.core.draw_mesh_lines(bone_line_mesh);
-
-		unsafe {
-			gl::Enable(gl::DEPTH_TEST);
-		}
-
-		// gfx.core.use_shader(basic_shader);
-		// gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
-		// gfx.core.draw_mesh(marker_mesh);
+		gfx.core.set_depth_test(true);
 
 		window.swap();
 	}

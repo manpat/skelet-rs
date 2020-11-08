@@ -1,6 +1,7 @@
 #version 140
 
 uniform mat4 u_proj_view;
+uniform mat4 u_object;
 uniform samplerBuffer u_bone_tex;
 
 attribute vec3 a_vertex;
@@ -36,6 +37,6 @@ void main() {
 
 	vec3 final_vert = vert_rest + vert_0 + vert_1 + vert_2;
 
-	gl_Position = u_proj_view * vec4(final_vert, 1.0);
+	gl_Position = u_proj_view * (u_object * vec4(final_vert, 1.0));
 	v_color = a_color; // vec4(a_bone_indices/4.0, 1.0);
 }

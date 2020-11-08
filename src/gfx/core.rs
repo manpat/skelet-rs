@@ -43,6 +43,16 @@ impl Core {
 		}
 	}
 
+	pub fn set_depth_test(&mut self, enable: bool) {
+		unsafe {
+			if enable {
+				gl::Enable(gl::DEPTH_TEST)
+			} else {
+				gl::Disable(gl::DEPTH_TEST)
+			}
+		}
+	}
+
 	pub fn clear(&mut self) {
 		unsafe {
 			gl::Clear(gl::COLOR_BUFFER_BIT|gl::DEPTH_BUFFER_BIT|gl::STENCIL_BUFFER_BIT);
