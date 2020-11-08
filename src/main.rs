@@ -9,7 +9,7 @@ pub mod util;
 use prelude::*;
 use glutin::{WindowEvent, ElementState::Pressed, MouseButton::Left as LeftMouse};
 use glutin::dpi::PhysicalPosition;
-use gfx::vertex;
+use gfx::vertex::{self, ColorVertex};
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let mut window = window::Window::new().expect("Failed to create window");
@@ -29,50 +29,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 	);
 
 
-	let project_data = std::fs::read("../assets/main.toy")?;
+	let project_data = std::fs::read("../assets/2.toy")?;
 	let project = toy::load(&project_data)?;
 
 	let bones;
+	let animations;
 
 	let mesh = gfx.core.new_mesh();
 	{
 		let mut mb = gfx::mesh_builder::MeshBuilder::new(mesh);
 		let color = Color::rgb(1.0, 0.0, 0.0);
 
-		// mb.add_quad(&[
-		// 	WeightedVertex::new(Vec3::new(-0.2 - 0.5, -0.2, 0.0), color, [1.0, 2.0], [0.5, 0.0]),
-		// 	WeightedVertex::new(Vec3::new(-0.2 - 0.5,  0.2, 0.0), color, [1.0, 2.0], [0.0, 0.0]),
-		// 	WeightedVertex::new(Vec3::new( 0.2 - 0.5,  0.2, 0.0), color, [1.0, 2.0], [0.7, 0.0]),
-		// 	WeightedVertex::new(Vec3::new( 0.2 - 0.5, -0.2, 0.0), color, [1.0, 2.0], [1.0, 0.0]),
-		// ]);
+		let toy_ent = project.find_entity("Cube").expect("Missing entity");
+		let toy_mesh = toy_ent.mesh_data().expect("missing mesh data");
 
-		// mb.add_quad(&[
-		// 	WeightedVertex::new(Vec3::new(-0.2, -0.2, 0.0), color, [1.0, 3.0], [0.5, 0.5]),
-		// 	WeightedVertex::new(Vec3::new(-0.2,  0.2, 0.0), color, [1.0, 2.0], [0.9, 0.1]),
-		// 	WeightedVertex::new(Vec3::new( 0.2,  0.2, 0.0), color, [1.0, 2.0], [0.1, 0.9]),
-		// 	WeightedVertex::new(Vec3::new( 0.2, -0.2, 0.0), color, [2.0, 3.0], [0.3, 0.7]),
-		// ]);
+		let animation_data = toy_mesh.animation_data.as_ref().expect("missing animation data");
 
-		// mb.add_quad(&[
-		// 	WeightedVertex::new(Vec3::new(-0.2 + 0.5, -0.2, 0.0), color, [1.0, 2.0], [0.0, 1.0]),
-		// 	WeightedVertex::new(Vec3::new(-0.2 + 0.5,  0.2, 0.0), color, [1.0, 2.0], [0.0, 1.0]),
-		// 	WeightedVertex::new(Vec3::new( 0.2 + 0.5,  0.2, 0.0), color, [1.0, 2.0], [0.0, 1.0]),
-		// 	WeightedVertex::new(Vec3::new( 0.2 + 0.5, -0.2, 0.0), color, [1.0, 2.0], [0.0, 1.0]),
-		// ]);
-
-		// mb.add_quad(&[
-		// 	WeightedVertex::new(Vec3::new(-0.4, -0.2-0.5, 0.0), color, [3.0, 2.0], [1.0, 0.0]),
-		// 	WeightedVertex::new(Vec3::new(-0.4,  0.2-0.5, 0.0), color, [3.0, 2.0], [1.0, 0.0]),
-		// 	WeightedVertex::new(Vec3::new( 0.4,  0.2-0.5, 0.0), color, [3.0, 2.0], [0.3, 0.7]),
-		// 	WeightedVertex::new(Vec3::new( 0.4, -0.2-0.5, 0.0), color, [3.0, 2.0], [1.0, 0.0]),
-		// ]);
-
-		let toy_ent = project.find_entity("Cube").expect("Missing entity 'Cube'");
-		let toy_mesh = toy_ent.mesh_data().expect("'Cube' missing mesh data");
-
-		let weight_data = toy_mesh.weight_data.as_ref().expect("'Cube' missing animation data");
-
-		bones = &weight_data.bones;
+		bones = &animation_data.bones;
+		animations = animation_data.animations.iter().collect(): Vec<_>;
 
 		let model_transform = Mat4::translate(toy_ent.position)
 			* toy_ent.rotation.to_mat4()
@@ -80,7 +54,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 		println!("{:?}", toy_mesh);
 
-		let verts = toy_mesh.positions.iter().zip(&weight_data.weights)
+		let verts = toy_mesh.positions.iter().zip(&animation_data.weights)
 			.map(move |(&pos, vertex_weight)| {
 				let toy::MeshWeightVertex{indices, weights} = *vertex_weight;
 
@@ -91,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 				];
 
 				WeightedVertex::new(
-					model_transform * pos, color.into(),
+					/*model_transform **/ pos, color.into(),
 					indices, weights
 				)
 			})
@@ -107,21 +81,40 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let mut mb = gfx::mesh_builder::MeshBuilder::new(bone_line_mesh);
 		let color = Color::rgb(0.0, 1.0, 1.0);
 
-		let verts = [
-			WeightedVertex::new(bones[0].head, color, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-			WeightedVertex::new(bones[0].tail, color, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+		let mut verts = Vec::new();
 
-			WeightedVertex::new(bones[1].head, color, [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-			WeightedVertex::new(bones[1].tail, color, [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-
-			WeightedVertex::new(bones[2].head, color, [2.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-			WeightedVertex::new(bones[2].tail, color, [2.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-
-			WeightedVertex::new(bones[3].head, color, [3.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-			WeightedVertex::new(bones[3].tail, color, [3.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
-		];
+		for (index, bone) in bones.iter().enumerate() {
+			verts.push(WeightedVertex::new(bone.head, color, [index as f32, 0.0, 0.0], [1.0, 0.0, 0.0]));
+			verts.push(WeightedVertex::new(bone.tail, color, [index as f32, 0.0, 0.0], [1.0, 0.0, 0.0]));
+		}
 
 		mb.add_geometry(&verts, 0..verts.len() as u16);
+		mb.commit(&mut gfx.core);
+	}
+
+
+	let marker_mesh = gfx.core.new_mesh();
+	{
+		let mut mb = gfx::mesh_builder::MeshBuilder::new(marker_mesh);
+		let color = Color::rgb(1.0, 1.0, 0.0);
+
+		for toy_ent in project.entities() {
+			let toy_mesh = match toy_ent.mesh_data() {
+				Some(m) => m,
+				None => continue
+			};
+
+			let model_transform = Mat4::translate(toy_ent.position)
+				* toy_ent.rotation.to_mat4()
+				* Mat4::scale(toy_ent.scale);
+
+			let verts = toy_mesh.positions.iter()
+				.map(move |&pos| ColorVertex::new(model_transform * pos, color.into()))
+				.collect(): Vec<_>;
+
+			mb.add_geometry(&verts, &toy_mesh.indices);
+		}
+
 		mb.commit(&mut gfx.core);
 	}
 
@@ -170,32 +163,21 @@ fn main() -> Result<(), Box<dyn Error>> {
 		// gfx.ui.clear();
 		// gfx.ui.update(gfx.camera.forward(), near_plane_pos, aspect);
 
-		let offset_0 = bones[0].head;
-		let offset_1 = bones[1].head;
-		let offset_2 = bones[2].head;
-		let offset_3 = bones[3].head;
+		let anim_idx = (elapsed / 3.0) as usize % animations.len();
 
-		let trans_0 = Mat4::translate(offset_0) * Mat4::yrot((elapsed*0.5).sin() * 0.5) * Mat4::translate(-offset_0);
-		let trans_1 = Mat4::translate(offset_1) * Mat4::zrot((elapsed*1.0).sin() * 0.5) * Mat4::translate(-offset_1);
-		let trans_2 = Mat4::translate(offset_2) * Mat4::xrot((elapsed*0.7).sin() * 0.5) * Mat4::translate(-offset_2);
-		let trans_3 = Mat4::translate(offset_3) * Mat4::yrot((elapsed*2.0).sin() * 1.0) * Mat4::translate(-offset_3);
+		let mut bone_frames = Vec::new();
+		for (channel, bone) in animations[anim_idx].channels.iter().zip(bones.iter()) {
+			let frame = (elapsed*animations[anim_idx].fps) as usize % channel.frames.len();
+			let frame = &channel.frames[frame];
 
-		let bones = [
-			Bone::from_mat4(trans_0),
-			Bone::from_mat4(trans_1),
-			Bone::from_mat4(trans_2),
-			Bone::from_mat4(trans_3),
-			Bone::from_mat4(Mat4::ident()),
-			Bone::from_mat4(Mat4::ident()),
-			Bone::from_mat4(Mat4::ident()),
-			Bone::from_mat4(Mat4::ident()),
-			Bone::from_mat4(Mat4::ident()),
-			Bone::from_mat4(trans_0),
-			Bone::from_mat4(Mat4::translate(Vec3::new(0.0, 0.2 + 0.5 * (elapsed*1.2).sin(), 0.0))),
-			Bone::from_mat4(trans_1),
-		];
+			let offset = bone.head;
+			let position = frame.position;
+			let rotation = frame.rotation.normalize();
+			let trans = Mat4::translate(position) * Mat4::scale(frame.scale) * rotation.to_mat4() * Mat4::translate(-offset);
+			bone_frames.push(BoneFrame::from_mat4(trans));
+		}
 
-		update_bone_texture(bone_buf_id, &bones);
+		update_bone_texture(bone_buf_id, &bone_frames);
 
 		gfx.core.use_shader(weighted_shader);
 
@@ -217,6 +199,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			gl::Enable(gl::DEPTH_TEST);
 		}
 
+		// gfx.core.use_shader(basic_shader);
+		// gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
+		// gfx.core.draw_mesh(marker_mesh);
+
 		window.swap();
 	}
 
@@ -232,15 +218,15 @@ fn window_to_screen(window_size: Vec2i, pos: Vec2) -> Vec2 {
 
 
 #[repr(C)]
-struct Bone {
+struct BoneFrame {
 	rows: [Vec4; 3],
 }
 
-impl Bone {
-	fn from_mat4(m: Mat4) -> Bone {
+impl BoneFrame {
+	fn from_mat4(m: Mat4) -> BoneFrame {
 		let mut rows = [Vec4::zero(); 3];
 		rows.copy_from_slice(&m.rows[..3]);
-		Bone {rows}
+		BoneFrame {rows}
 	}
 }
 
@@ -259,8 +245,8 @@ fn generate_bone_texture() -> (u32, u32) {
 	(tex_id, buf_id)
 }
 
-fn update_bone_texture(buf_id: u32, bones: &[Bone]) {
-	let buffer_size = bones.len() * std::mem::size_of::<Bone>();
+fn update_bone_texture(buf_id: u32, bones: &[BoneFrame]) {
+	let buffer_size = bones.len() * std::mem::size_of::<BoneFrame>();
 	assert!(buffer_size < 65536); // GL_MAX_TEXTURE_BUFFER_SIZE
 
 	unsafe {
