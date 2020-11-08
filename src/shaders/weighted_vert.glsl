@@ -3,6 +3,7 @@
 uniform mat4 u_proj_view;
 uniform mat4 u_object;
 uniform samplerBuffer u_bone_tex;
+uniform int u_bone_offset;
 
 attribute vec3 a_vertex;
 attribute vec4 a_color;
@@ -13,9 +14,9 @@ varying vec4 v_color;
 
 
 mat4x3 read_bone(in float index) {
-	vec4 row_0 = texelFetch(u_bone_tex, int(index)*3+0);
-	vec4 row_1 = texelFetch(u_bone_tex, int(index)*3+1);
-	vec4 row_2 = texelFetch(u_bone_tex, int(index)*3+2);
+	vec4 row_0 = texelFetch(u_bone_tex, int(u_bone_offset + index)*3+0);
+	vec4 row_1 = texelFetch(u_bone_tex, int(u_bone_offset + index)*3+1);
+	vec4 row_2 = texelFetch(u_bone_tex, int(u_bone_offset + index)*3+2);
 
 	mat3x4 transposed;
 	transposed[0] = row_0;

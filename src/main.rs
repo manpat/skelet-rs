@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	);
 
 
-	let project_data = std::fs::read("../assets/2.toy")?;
+	let project_data = std::fs::read("../assets/3.toy")?;
 	let project = toy::load(&project_data)?;
 
 	let bones;
@@ -39,12 +39,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let mesh = gfx.core.new_mesh();
 	{
 		let mut mb = gfx::mesh_builder::MeshBuilder::new(mesh);
-		let color = Color::rgb(1.0, 0.0, 0.0);
 
 		let toy_ent = project.find_entity("Cube").expect("Missing entity");
 		let toy_mesh = toy_ent.mesh_data().expect("missing mesh data");
 
 		let animation_data = toy_mesh.animation_data.as_ref().expect("missing animation data");
+		let color_data = toy_mesh.color_data(toy::DEFAULT_COLOR_DATA_NAME).expect("missing color data");
 
 		bones = &animation_data.bones;
 		animations = animation_data.animations.iter().collect(): Vec<_>;
@@ -52,8 +52,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 		// println!("{:?}", toy_mesh);
 
-		let verts = toy_mesh.positions.iter().zip(&animation_data.weights)
-			.map(move |(&pos, vertex_weight)| {
+		let verts = toy_mesh.positions.iter().zip(&animation_data.weights).zip(&color_data.data)
+			.map(move |((&pos, vertex_weight), &color)| {
 				let toy::MeshWeightVertex{indices, weights} = *vertex_weight;
 
 				let indices = [
@@ -115,13 +115,58 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 
 	let bone_buf = gfx.core.new_texture_buffer();
-	let mut elapsed = 0.0f32;
 
-	let mut anim_idx = 0;
+
+	struct Instance {
+		transform: Mat4,
+
+		anim_idx: usize,
+		anim_time: f32,
+
+		bone_offset: usize,
+	}
+
+	let mut instances = vec![
+		Instance {
+			transform: model_transform,
+
+			anim_idx: 0,
+			anim_time: 0.0,
+			bone_offset: 0,
+		},
+		Instance {
+			transform: Mat4::translate(Vec3::new(-3.0, 0.0, 4.0)) * model_transform,
+
+			anim_idx: 0,
+			anim_time: 5.0,
+			bone_offset: 0,
+		},
+		Instance {
+			transform: Mat4::translate(Vec3::new(4.0, 0.0, 3.0)) * model_transform,
+
+			anim_idx: 0,
+			anim_time: 8.0,
+			bone_offset: 0,
+		},
+		// Instance {
+		// 	transform: Mat4::translate(Vec3::from_z(-2.0)) * model_transform,
+
+		// 	anim_idx: 1,
+		// 	anim_time: 0.0,
+		// 	bone_offset: 0,
+		// },
+		// Instance {
+		// 	transform: Mat4::translate(Vec3::new(3.0, 0.0, 2.0)) * model_transform,
+
+		// 	anim_idx: 2,
+		// 	anim_time: 0.0,
+		// 	bone_offset: 0,
+		// },
+	];
 
 	'main_loop: loop {
 		// gfx.ui.clear_click_state();
-		elapsed += 1.0 / 60.0; 
+		// elapsed += 1.0 / 60.0; 
 
 		let events = window.poll_events();
 
@@ -134,12 +179,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 				// 	gfx.ui.on_mouse_move(mouse_pos);
 				// }
 
-				WindowEvent::MouseInput {state: Pressed, button: LeftMouse, ..} => {
-					// gfx.ui.on_mouse_click();
-					anim_idx = (anim_idx+1) % animations.len();
-					elapsed = 0.0;
-					println!("animation: {}", animations[anim_idx].name);
-				}
+				// WindowEvent::MouseInput {state: Pressed, button: LeftMouse, ..} => {
+				// 	// gfx.ui.on_mouse_click();
+				// 	anim_idx = (anim_idx+1) % animations.len();
+				// 	elapsed = 0.0;
+				// 	println!("animation: {}", animations[anim_idx].name);
+				// }
 
 				WindowEvent::CloseRequested => {
 					break 'main_loop
@@ -164,34 +209,68 @@ fn main() -> Result<(), Box<dyn Error>> {
 		// gfx.ui.clear();
 		// gfx.ui.update(gfx.camera.forward(), near_plane_pos, aspect);
 
-		let mut bone_frames = Vec::new();
-		for (channel, bone) in animations[anim_idx].channels.iter().zip(bones.iter()) {
-			let frame = (elapsed*animations[anim_idx].fps) as usize % channel.frames.len();
-			let frame = &channel.frames[frame];
 
-			let offset = bone.head;
-			let position = frame.position;
-			let rotation = frame.rotation.normalize();
-			let trans = Mat4::translate(position) * Mat4::scale(frame.scale) * rotation.to_mat4() * Mat4::translate(-offset);
-			bone_frames.push(BoneFrame::from_mat4(trans));
+		for inst in instances.iter_mut() {
+			inst.anim_time += animations[inst.anim_idx].fps/60.0;
+		}
+
+
+		let mut bone_frames = Vec::new();
+
+		for Instance{anim_idx, anim_time, bone_offset, ..} in instances.iter_mut() {
+			*bone_offset = bone_frames.len();
+
+			let frames = animations[*anim_idx].channels[0].frames.len();
+
+			let frame_0 = (*anim_time) as usize % frames;
+			let frame_1 = (frame_0 + 1) % frames;
+
+			let frame_t = anim_time.fract();
+
+			for (channel, bone) in animations[*anim_idx].channels.iter().zip(bones.iter()) {
+				let frame_0 = &channel.frames[frame_0];
+				let frame_1 = &channel.frames[frame_1];
+
+				// let position = frame_t.ease_linear(frame_0.position, frame_1.position);
+				let position = frame_0.position;
+				// let scale = frame_t.ease_linear(frame_0.scale, frame_1.scale);
+				let scale = frame_0.scale; // frame_t.ease_linear(frame_0.scale, frame_1.scale);
+				// let rotation = frame_t.ease_linear(frame_0.rotation, frame_1.rotation).normalize();
+				let rotation = frame_0.rotation;
+
+				let trans = Mat4::translate(position) // position includes offset 
+					* Mat4::scale(scale)
+					* rotation.to_mat4()
+					* Mat4::translate(-bone.head);
+
+				bone_frames.push(BoneFrame::from_mat4(trans));
+			}
 		}
 
 		gfx.core.update_texture_buffer(bone_buf, &bone_frames);
 
 		gfx.core.use_shader(weighted_shader);
-		gfx.core.set_uniform_texture_buffer("u_bone_tex", bone_buf, 0);
 		gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
-		gfx.core.set_uniform_mat4("u_object", &model_transform);
-		gfx.core.draw_mesh(mesh);
+		gfx.core.set_uniform_texture_buffer("u_bone_tex", bone_buf, 0);
+
+		for Instance{bone_offset, transform, ..} in instances.iter() {
+			gfx.core.set_uniform_i32("u_bone_offset", (*bone_offset) as _);
+			gfx.core.set_uniform_mat4("u_object", &transform);
+			gfx.core.draw_mesh(mesh);
+		}
 
 		gfx.core.use_shader(basic_shader);
 		gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
 		gfx.core.draw_mesh(marker_mesh);
 
-		gfx.core.use_shader(weighted_shader);
-		gfx.core.set_depth_test(false);
-		gfx.core.draw_mesh_lines(bone_line_mesh);
-		gfx.core.set_depth_test(true);
+		// gfx.core.use_shader(weighted_shader);
+		// gfx.core.set_depth_test(false);
+		// for Instance{bone_offset, transform, ..} in instances.iter() {
+		// 	gfx.core.set_uniform_i32("u_bone_offset", (*bone_offset) as _);
+		// 	gfx.core.set_uniform_mat4("u_object", &transform);
+		// 	gfx.core.draw_mesh_lines(bone_line_mesh);
+		// }
+		// gfx.core.set_depth_test(true);
 
 		window.swap();
 	}

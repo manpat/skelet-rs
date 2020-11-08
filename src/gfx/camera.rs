@@ -54,8 +54,8 @@ impl Camera {
 
 		self.timer += 1.0/60.0;
 
-		let projection = Mat4::ortho_aspect(self.view_size, aspect, -100.0, 200.0);
-		self.orientation = Quat::new(Vec3::from_y(1.0), self.yaw + self.timer.sin() as f32*0.02)
+		let projection = Mat4::ortho_aspect(self.view_size, aspect, -10.0, 200.0);
+		self.orientation = Quat::new(Vec3::from_y(1.0), self.yaw + self.timer.sin() as f32*0.05)
 			* Quat::new(Vec3::from_x(1.0), self.pitch);
 
 		let translation = Mat4::translate(-self.position + self.orientation.forward() * self.view_dist);
