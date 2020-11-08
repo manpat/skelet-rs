@@ -2,17 +2,23 @@
 use std::marker::PhantomData;
 
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct TextureBufferID<V: Copy>(pub(super) usize, pub(super) PhantomData<*const V>);
+#[derive(Copy, Clone, Debug)]
+pub struct TextureBufferID<T: Copy>(pub(super) usize, pub(super) PhantomData<*const T>);
 
-// #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-// pub(super) struct UntypedTextureBufferID(pub(super) usize);
 
-// impl<V: Vertex> From<TextureBufferID<V>> for UntypedTextureBufferID {
-// 	fn from(MeshID(o, _): MeshID<V>) -> UntypedMeshID {
-// 		UntypedMeshID(o)
-// 	}
-// }
+// Manual implementations required because of PhantomData
+// see: https://github.com/rust-lang/rust/issues/26925
+impl<T: Copy> std::hash::Hash for TextureBufferID<T> {
+	#[inline]
+	fn hash<H: std::hash::Hasher>(&self, h: &mut H) { self.0.hash(h) }
+}
+
+impl<T: Copy> std::cmp::PartialEq for TextureBufferID<T> {
+    fn eq(&self, o: &TextureBufferID<T>) -> bool { self.0.eq(&o.0) }
+}
+
+impl<T: Copy> std::cmp::Eq for TextureBufferID<T> {}
+
 
 
 pub(super) struct TextureBuffer {

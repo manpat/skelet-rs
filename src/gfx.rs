@@ -5,11 +5,13 @@ pub mod vertex;
 pub mod texture_buffer;
 pub mod mesh_builder;
 pub mod camera;
+pub mod animation;
 
 
 pub struct Gfx {
 	pub core: core::Core,
 	pub camera: camera::Camera,
+	pub anim: animation::AnimationManager,
 }
 
 
@@ -51,9 +53,12 @@ impl Gfx {
 			);
 		}
 
+		let anim = animation::AnimationManager::new(&mut core);
+
 		Gfx {
 			core,
 			camera: camera::Camera::new(),
+			anim,
 		}
 	}
 }

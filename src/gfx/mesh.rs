@@ -3,10 +3,10 @@ use super::vertex::*;
 use std::marker::PhantomData;
 
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug)]
 pub struct MeshID<V: Vertex>(pub(super) usize, pub(super) PhantomData<*const V>);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) struct UntypedMeshID(pub(super) usize);
 
 impl<V: Vertex> From<MeshID<V>> for UntypedMeshID {
@@ -14,6 +14,21 @@ impl<V: Vertex> From<MeshID<V>> for UntypedMeshID {
 		UntypedMeshID(o)
 	}
 }
+
+// Manual implementations required because of PhantomData
+// see: https://github.com/rust-lang/rust/issues/26925
+impl<V: Vertex> std::hash::Hash for MeshID<V> {
+	#[inline]
+	fn hash<H: std::hash::Hasher>(&self, h: &mut H) { self.0.hash(h) }
+}
+
+impl<V: Vertex> std::cmp::PartialEq for MeshID<V> {
+    fn eq(&self, o: &MeshID<V>) -> bool { self.0.eq(&o.0) }
+}
+
+impl<V: Vertex> std::cmp::Eq for MeshID<V> {}
+
+
 
 pub(super) struct Mesh {
 	pub(super) descriptor: Descriptor,
