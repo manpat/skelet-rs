@@ -13,7 +13,7 @@ use std::collections::HashMap;
 pub type AnimatedMeshID = MeshID<WeightedVertex>;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct AnimationID(pub AnimatedMeshID, pub usize);
+pub struct AnimationID(AnimatedMeshID, usize);
 
 
 pub struct AnimatedMeshInstance {
@@ -27,17 +27,20 @@ pub struct AnimatedMeshInstance {
 
 struct AnimatedMeshData {
 	animations: Vec<Animation>,
+	bones: Vec<(Vec3, Vec3)>,
+
+	bone_mesh: AnimatedMeshID,
 }
 
-struct Animation {
-	name: String,
-	fps: f32,
+pub struct Animation {
+	pub name: String,
+	pub fps: f32,
 
 	/// the packed animation for all frames for all bones - laid out linearly.
 	/// a sequence of `bone_count` elements represents a single frame
 	frame_data: Vec<BoneFrame>,
-	bone_count: usize,
-	frame_count: usize,
+	pub bone_count: usize,
+	pub frame_count: usize,
 }
 
 pub struct AnimationManager {
@@ -46,8 +49,9 @@ pub struct AnimationManager {
 	shader: ShaderID,
 
 	mesh_animations: HashMap<AnimatedMeshID, AnimatedMeshData>,
-}
 
+	draw_bone_debug: bool,
+}
 
 
 impl AnimationManager {
@@ -66,6 +70,7 @@ impl AnimationManager {
 			shader,
 
 			mesh_animations: HashMap::new(),
+			draw_bone_debug: false,
 		}
 	}
 
@@ -112,7 +117,7 @@ impl AnimationManager {
 				for (channel, bone) in anim.channels.iter().zip(&animation_data.bones) {
 					let frame = &channel.frames[frame_idx];
 
-					// position includes bone.head
+					// frame.position includes bone.head - which is why theres no need to unoffset again
 					let trans = Mat4::translate(frame.position) 
 						* Mat4::scale(frame.scale)
 						* frame.rotation.to_mat4()
@@ -132,7 +137,30 @@ impl AnimationManager {
 			});
 		}
 
-		self.mesh_animations.insert(mesh, AnimatedMeshData{animations});
+		let bone_mesh = core.new_mesh();
+		{
+			let mut mb = gfx::mesh_builder::MeshBuilder::new(bone_mesh);
+
+			let bone_color = Color::rgb(0.5, 0.1, 0.5);
+
+			let to_vert = |b, idx| WeightedVertex::new(b, bone_color, [0.0, idx, 0.0], [0.0, 1.0, 0.0]);
+			let verts = animation_data.bones.iter().enumerate()
+				.flat_map(move |(idx, b)| {
+					let v0 = std::iter::once(to_vert(b.head, idx as f32));
+					let v1 = std::iter::once(to_vert(b.tail, idx as f32));
+					v0.chain(v1)
+				})
+				.collect(): Vec<_>;
+
+			mb.add_geometry(&verts, 0..verts.len() as u16);
+			mb.commit(core);
+		}
+
+		let bones = animation_data.bones.iter()
+			.map(|bone| (bone.head, bone.tail))
+			.collect();
+
+		self.mesh_animations.insert(mesh, AnimatedMeshData{animations, bones, bone_mesh});
 
 		mesh
 	}
@@ -143,7 +171,30 @@ impl AnimationManager {
 	}
 
 
-	pub fn draw(&mut self, core: &mut Core, camera: &Camera) {
+	pub fn animations_for(&self, mesh_id: AnimatedMeshID) -> impl Iterator<Item=(AnimationID, &Animation)> {
+		self.mesh_animations.get(&mesh_id)
+			.expect("trying to get animations for unregistered mesh")
+			.animations.iter()
+			.enumerate()
+			.map(move |(idx, anim)| (AnimationID(mesh_id, idx), anim))
+	}
+
+	pub fn animation_by_name<'s>(&'s self, mesh_id: AnimatedMeshID, name: &str) -> Option<(AnimationID, &'s Animation)> {
+		self.animations_for(mesh_id)
+			.find(|(_, anim)| anim.name == name)
+	}
+
+	pub fn animation_meta(&self, AnimationID(mesh_id, anim_idx): AnimationID) -> Option<&Animation> {
+		self.mesh_animations.get(&mesh_id)
+			.and_then(|d| d.animations.get(anim_idx))
+	}
+
+
+	pub fn clear(&mut self) {
+		self.instances.clear();
+	}
+
+	pub fn draw(&self, core: &mut Core, camera: &Camera) {
 		let mut bone_frames = Vec::new();
 		let mut bone_offsets = Vec::new();
 
@@ -179,7 +230,20 @@ impl AnimationManager {
 			core.draw_mesh(mesh);
 		}
 
-		self.instances.clear();
+		// debug bone viz
+		if self.draw_bone_debug {
+			core.set_depth_test(false);
+			for (AnimatedMeshInstance{transform, animation, ..}, bone_offset) in self.instances.iter().zip(&bone_offsets) {
+				let AnimationID(mesh, _) = animation;
+				let animated_mesh_data = self.mesh_animations.get(mesh)
+					.expect("trying to get animation data for unregistered mesh");
+
+				core.set_uniform_i32("u_bone_offset", *bone_offset as _);
+				core.set_uniform_mat4("u_object", &transform);
+				core.draw_mesh_lines(animated_mesh_data.bone_mesh);
+			}
+			core.set_depth_test(true);
+		}
 	}
 }
 

@@ -7,22 +7,22 @@ pub mod window;
 pub mod util;
 
 use prelude::*;
-use glutin::{WindowEvent, ElementState::Pressed, MouseButton::Left as LeftMouse};
+use glutin::event::{WindowEvent, ElementState::Pressed, MouseButton::Left as LeftMouse};
 use glutin::dpi::PhysicalPosition;
-use gfx::vertex::{self, ColorVertex};
+// use gfx::vertex::{self, ColorVertex};
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let mut window = window::Window::new().expect("Failed to create window");
 	let mut gfx = gfx::Gfx::new();
 	let mut mouse_pos = Vec2::zero();
 
-	let basic_shader = gfx.core.new_shader(
-		include_str!("shaders/basic_vert.glsl"),
-		include_str!("shaders/frag.glsl"),
-		&["a_vertex", "a_color"]
-	);
+	// let basic_shader = gfx.core.new_shader(
+	// 	include_str!("shaders/basic_vert.glsl"),
+	// 	include_str!("shaders/frag.glsl"),
+	// 	&["a_vertex", "a_color"]
+	// );
 
-	let project_data = std::fs::read("../assets/3.toy")?;
+	let project_data = std::fs::read("assets/ghost.toy")?;
 	let project = toy::load(&project_data)?;
 
 	let cube_mesh = {
@@ -31,7 +31,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 		gfx.anim.register_animated_mesh(&mut gfx.core, &toy_mesh)
 	};
 
-	let bob_anim = gfx::animation::AnimationID(cube_mesh, 0);
+	let (bob_anim_id, _) = gfx.anim.animation_by_name(cube_mesh, "bob")
+		.expect("missing 'bob' animation");
 
 	struct Instance {
 		pos: Vec3,
@@ -43,31 +44,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let mut instances = vec![];
 
 	fn calculate_instance_transform(inst: &Instance) -> Mat4 {
-		let car_scale = Mat4::scale(Vec3::splat(0.3));
+		let car_scale = Mat4::scale(Vec3::splat(0.5));
 		Mat4::translate(inst.pos)
-			* (Quat::new(Vec3::from_y(1.0), PI/2.0) * inst.rot).to_mat4()
+			* inst.rot.to_mat4()
+			// * Mat4::yrot(-PI/2.0)
 			* car_scale
 	}
 
+	let mut elapsed = 0.0;
+	let mut running = true;
 
-	'main_loop: loop {
-		// gfx.ui.clear_click_state();
-		// elapsed += 1.0 / 60.0; 
-
-		let events = window.poll_events();
-
-		for event in events {
+	while running {
+		let window_size = window.size();
+		window.poll_events(|event| {
 			match event {
 				WindowEvent::CursorMoved {position, ..} => {
-					let PhysicalPosition{x, y} = position.to_physical(window.dpi());
+					let PhysicalPosition{x, y} = position;
 					let pos = Vec2::new(x as f32, y as f32);
-					mouse_pos = window_to_screen(window.size(), pos);
-					// gfx.ui.on_mouse_move(mouse_pos);
+					mouse_pos = window_to_screen(window_size, pos);
 				}
 
 				WindowEvent::MouseInput {state: Pressed, button: LeftMouse, ..} => {
-					// gfx.ui.on_mouse_click();
-
 					let near_plane_pos = gfx.camera.inverse_projection_view() * mouse_pos.extend(0.0).extend(1.0);
 					let near_plane_pos = near_plane_pos.to_vec3() / near_plane_pos.w;
 					let pos = util::intersect_ground(near_plane_pos, gfx.camera.forward());
@@ -77,14 +74,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 				}
 
 				WindowEvent::CloseRequested => {
-					break 'main_loop
+					running = false;
 				}
 
 				_ => {}
 			}
-		}
+		});
 
-		let window_size = window.size();
 		let aspect = window_size.x as f32 / window_size.y as f32;
 
 		gfx.core.set_viewport(window_size);
@@ -92,32 +88,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 		gfx.core.clear();
 		gfx.camera.update(aspect);
 
-		// let ui_proj_view = Mat4::ortho_aspect(1.0, aspect, -100.0, 200.0);
-		// let near_plane_pos = gfx.camera.inverse_projection_view() * mouse_pos.extend(0.0).extend(1.0);
-		// let near_plane_pos = near_plane_pos.to_vec3() / near_plane_pos.w;
 
-		// gfx.ui.clear();
-		// gfx.ui.update(gfx.camera.forward(), near_plane_pos, aspect);
-
+		let anim_fps = gfx.anim.animation_meta(bob_anim_id).unwrap().fps;
 
 		for inst in instances.iter_mut() {
 			let dt = 1.0/60.0;
-			inst.anim_time += 12.0 * dt; // animations[inst.anim_idx].fps * dt;
-			inst.pos += inst.rot.forward() * 3.0 * dt;
+			inst.anim_time += anim_fps * dt;
+			inst.pos += inst.rot.forward() * /*2.0*/ 0.7 * dt;
 		}
 
 		instances.retain(|inst| inst.pos.length() < 20.0);
+		elapsed += 1.0/60.0;
 
 
 		for inst in instances.iter() {
 			gfx.anim.add_instance(gfx::animation::AnimatedMeshInstance {
 				transform: calculate_instance_transform(inst),
-				animation: bob_anim,
+				animation: bob_anim_id,
 				animation_time: inst.anim_time
 			})
 		}
 
+		// gfx.anim.add_instance(gfx::animation::AnimatedMeshInstance {
+		// 	transform: Mat4::translate(Vec3::from_y(-1.3)) * Mat4::yrot(PI),
+		// 	animation: bob_anim_id,
+		// 	animation_time: anim_fps * elapsed
+		// });
+
 		gfx.anim.draw(&mut gfx.core, &gfx.camera);
+		gfx.anim.clear();
 
 		// gfx.core.use_shader(basic_shader);
 		// gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());

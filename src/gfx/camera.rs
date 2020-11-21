@@ -24,7 +24,7 @@ pub struct Camera {
 
 const DEFAULT_VIEW_SIZE: f32 = 5.0;
 const DEFAULT_YAW: f32 = PI/8.0;
-const DEFAULT_PITCH: f32 = -PI/6.0;
+const DEFAULT_PITCH: f32 = -PI/7.0;
 
 
 impl Camera {
@@ -52,11 +52,15 @@ impl Camera {
 		// 	p.fulfill(());
 		// }
 
-		self.timer += 1.0/60.0;
+		// self.timer += 1.0/60.0;
 
-		let projection = Mat4::ortho_aspect(self.view_size, aspect, -10.0, 200.0);
+		let projection = Mat4::ortho_aspect(self.view_size, aspect, -50.0, 200.0);
 		self.orientation = Quat::new(Vec3::from_y(1.0), self.yaw + self.timer.sin() as f32*0.05)
 			* Quat::new(Vec3::from_x(1.0), self.pitch);
+
+		// let projection = Mat4::perspective(PI/2.0, aspect, 0.1, 200.0);
+		// self.orientation = Quat::new(Vec3::from_y(1.0), /*self.yaw */ /*+ self.timer + */ (self.timer/2.4).sin() as f32*PI/5.0)
+			// * Quat::new(Vec3::from_x(1.0), 0.0);
 
 		let translation = Mat4::translate(-self.position + self.orientation.forward() * self.view_dist);
 		self.projection_view = projection * self.orientation.conjugate().to_mat4() * translation;
