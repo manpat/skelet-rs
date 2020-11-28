@@ -1,5 +1,6 @@
 pub mod core;
 pub mod mesh;
+pub mod debug;
 pub mod shader;
 pub mod vertex;
 pub mod texture_buffer;
@@ -10,6 +11,7 @@ pub mod animation;
 
 pub struct Gfx {
 	pub core: core::Core,
+	pub debug: debug::Debug,
 	pub camera: camera::Camera,
 	pub anim: animation::AnimationManager,
 }
@@ -28,7 +30,7 @@ impl Gfx {
 			gl::Enable(gl::BLEND);
 			gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 			
-			gl::PointSize(2.0);
+			gl::PointSize(3.0);
 			gl::LineWidth(2.0);
 
 			gl::DebugMessageCallback(Some(gl_message_callback), std::ptr::null());
@@ -53,10 +55,12 @@ impl Gfx {
 			);
 		}
 
+		let debug = debug::Debug::new(&mut core);
 		let anim = animation::AnimationManager::new(&mut core);
 
 		Gfx {
 			core,
+			debug,
 			camera: camera::Camera::new(),
 			anim,
 		}

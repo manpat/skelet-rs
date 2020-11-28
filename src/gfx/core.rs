@@ -10,8 +10,11 @@ use super::texture_buffer::*;
 
 
 pub struct Core {
+	capabilities: Capabilities,
+
 	shaders: Vec<Shader>,
 	meshes: Vec<Mesh>,
+	basic_meshes: Vec<BasicMesh>,
 	texture_buffers: Vec<TextureBuffer>,
 
 	bound_shader: Option<ShaderID>,
@@ -21,15 +24,24 @@ pub struct Core {
 
 impl Core {
 	pub fn new() -> Core {
+		let capabilities = Capabilities::new();
+
+		println!("capabilities: {:#?}", capabilities);
+
 		Core {
+			capabilities,
+
 			shaders: Vec::new(),
 			meshes: Vec::new(),
+			basic_meshes: Vec::new(),
 			texture_buffers: Vec::new(),
 
 			bound_shader: None,
 			bound_mesh: None,
 		}
 	}
+
+	pub fn capabilities(&self) -> &Capabilities { &self.capabilities }
 
 	pub fn set_bg_color(&mut self, c: Color) {
 		unsafe {
@@ -60,6 +72,7 @@ impl Core {
 			gl::Clear(gl::COLOR_BUFFER_BIT|gl::DEPTH_BUFFER_BIT|gl::STENCIL_BUFFER_BIT);
 		}
 	}
+
 
 	// Shaders
 	pub fn new_shader(&mut self, vsrc: &str, fsrc: &str, attribs: &[&str]) -> ShaderID {
@@ -115,25 +128,20 @@ impl Core {
 		}
 	}
 
+
 	// Meshes
 	pub fn new_mesh<V: Vertex>(&mut self) -> MeshID<V> {
 		self.meshes.push(Mesh::new(V::descriptor()));
 		MeshID(self.meshes.len()-1, PhantomData)
 	}
 
-	fn bind_mesh<V: Vertex>(&mut self, id: MeshID<V>) {
-		let untyped_id = UntypedMeshID::from(id);
-		if self.bound_mesh == Some(untyped_id) {
-			return;
-		}
-
-		let mesh = self.meshes.get(id.0).expect("Tried to bind invalid mesh");
-		mesh.bind();
-		self.bound_mesh = Some(untyped_id);
+	pub fn new_basic_mesh<V: Vertex>(&mut self) -> BasicMeshID<V> {
+		self.basic_meshes.push(BasicMesh::new(V::descriptor()));
+		BasicMeshID(self.basic_meshes.len()-1, PhantomData)
 	}
 
 	pub fn update_mesh<V: Vertex>(&mut self, id: MeshID<V>, vs: &[V], es: &[u16]) {
-		self.bind_mesh(id);
+		id.bind_mesh(self);
 
 		let mesh = self.meshes.get_mut(id.0).expect("Tried to bind invalid mesh");
 		mesh.element_count = es.len() as _;
@@ -155,37 +163,37 @@ impl Core {
 		}
 	}
 
-	pub fn draw_mesh<V: Vertex>(&mut self, id: MeshID<V>) {
-		self.bind_mesh(id);
+	pub fn update_basic_mesh<V: Vertex>(&mut self, id: BasicMeshID<V>, vs: &[V]) {
+		id.bind_mesh(self);
 
-		let mesh = self.meshes.get(id.0).expect("Tried to bind invalid mesh");
-		mesh.descriptor.bind();
+		let mesh = self.basic_meshes.get_mut(id.0).expect("Tried to bind invalid mesh");
+		mesh.vertex_count = vs.len() as _;
 
 		unsafe {
-			gl::DrawElements(
-				gl::TRIANGLES,
-				mesh.element_count as _,
-				gl::UNSIGNED_SHORT,
-				std::ptr::null()
+			gl::BufferData(
+				gl::ARRAY_BUFFER,
+				(vs.len() * std::mem::size_of::<V>()) as _,
+				vs.as_ptr() as *const _,
+				gl::STATIC_DRAW
 			);
 		}
 	}
 
-	pub fn draw_mesh_lines<V: Vertex>(&mut self, id: MeshID<V>) {
-		self.bind_mesh(id);
-
-		let mesh = self.meshes.get(id.0).expect("Tried to bind invalid mesh");
-		mesh.descriptor.bind();
-
-		unsafe {
-			gl::DrawElements(
-				gl::LINES,
-				mesh.element_count as _,
-				gl::UNSIGNED_SHORT,
-				std::ptr::null()
-			);
-		}
+	pub fn draw_mesh<ID: MeshIDLike>(&mut self, id: ID) {
+		id.bind_mesh(self);
+		id.draw_mesh(self, gl::TRIANGLES);
 	}
+
+	pub fn draw_mesh_lines<ID: MeshIDLike>(&mut self, id: ID) {
+		id.bind_mesh(self);
+		id.draw_mesh(self, gl::LINES);
+	}
+
+	pub fn draw_mesh_points<ID: MeshIDLike>(&mut self, id: ID) {
+		id.bind_mesh(self);
+		id.draw_mesh(self, gl::POINTS);
+	}
+
 
 	// TextureBuffers
 	pub fn new_texture_buffer<V: Copy>(&mut self) -> TextureBufferID<V> {
@@ -195,7 +203,7 @@ impl Core {
 
 	pub fn update_texture_buffer<V: Copy>(&mut self, id: TextureBufferID<V>, data: &[V]) {
 		let buffer_size = data.len() * std::mem::size_of::<V>();
-		assert!(buffer_size < 65536,
+		assert!(buffer_size < self.capabilities.texture_buffer_size,
 			"Texture buffer size exceeds minimum guaranteed value of GL_MAX_TEXTURE_BUFFER_SIZE");
 
 		assert!(buffer_size % (std::mem::size_of::<f32>() * 4) == 0,
@@ -211,6 +219,94 @@ impl Core {
 				data.as_ptr() as _,
 				gl::STREAM_DRAW
 			);
+		}
+	}
+}
+
+
+
+
+
+
+pub trait MeshIDLike {
+	// type Vertex: Vertex;
+	// type Mesh;
+
+	fn bind_mesh(&self, core: &mut Core);
+	fn draw_mesh(&self, core: &mut Core, draw_mode: u32);
+}
+
+
+impl<V: Vertex> MeshIDLike for MeshID<V> {
+	// type Vertex = V;
+
+	fn bind_mesh(&self, core: &mut Core) {
+		let untyped_id = UntypedMeshID::from(*self);
+		if core.bound_mesh == Some(untyped_id) {
+			return;
+		}
+
+		let mesh = core.meshes.get(self.0).expect("Tried to bind invalid mesh");
+		mesh.bind();
+		core.bound_mesh = Some(untyped_id);
+	}
+
+	fn draw_mesh(&self, core: &mut Core, draw_mode: u32) {
+		let mesh = core.meshes.get(self.0).expect("Tried to bind invalid mesh");
+		mesh.descriptor.bind();
+
+		unsafe {
+			gl::DrawElements(
+				draw_mode,
+				mesh.element_count as _,
+				gl::UNSIGNED_SHORT,
+				std::ptr::null()
+			);
+		}
+	}
+}
+
+impl<V: Vertex> MeshIDLike for BasicMeshID<V> {
+	// type Vertex = V;
+
+	fn bind_mesh(&self, core: &mut Core) {
+		let untyped_id = UntypedMeshID::from(*self);
+		if core.bound_mesh == Some(untyped_id) {
+			return;
+		}
+
+		let mesh = core.basic_meshes.get(self.0).expect("Tried to bind invalid mesh");
+		mesh.bind();
+		core.bound_mesh = Some(untyped_id);
+	}
+
+	fn draw_mesh(&self, core: &mut Core, draw_mode: u32) {
+		let mesh = core.basic_meshes.get(self.0).expect("Tried to bind invalid mesh");
+		mesh.descriptor.bind();
+
+		unsafe {
+			gl::DrawArrays(draw_mode, 0, mesh.vertex_count as _);
+		}
+	}
+}
+
+
+
+
+
+#[derive(Debug)]
+pub struct Capabilities {
+	pub texture_buffer_size: usize,
+}
+
+impl Capabilities {
+	fn new() -> Capabilities {
+		Capabilities {
+			texture_buffer_size: unsafe {
+				let mut v = 0;
+				gl::GetIntegerv(gl::MAX_TEXTURE_BUFFER_SIZE, &mut v);
+				v as usize
+			},
 		}
 	}
 }

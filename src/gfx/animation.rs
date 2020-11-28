@@ -4,7 +4,7 @@ use crate::gfx;
 use super::core::Core;
 use super::camera::Camera;
 use super::shader::ShaderID;
-use super::mesh::MeshID;
+use super::mesh::{MeshID, BasicMeshID};
 use super::texture_buffer::TextureBufferID;
 use super::vertex;
 
@@ -29,7 +29,7 @@ struct AnimatedMeshData {
 	animations: Vec<Animation>,
 	bones: Vec<(Vec3, Vec3)>,
 
-	bone_mesh: AnimatedMeshID,
+	bone_mesh: BasicMeshID<WeightedVertex>,
 }
 
 pub struct Animation {
@@ -137,10 +137,8 @@ impl AnimationManager {
 			});
 		}
 
-		let bone_mesh = core.new_mesh();
+		let bone_mesh = core.new_basic_mesh();
 		{
-			let mut mb = gfx::mesh_builder::MeshBuilder::new(bone_mesh);
-
 			let bone_color = Color::rgb(0.5, 0.1, 0.5);
 
 			let to_vert = |b, idx| WeightedVertex::new(b, bone_color, [0.0, idx, 0.0], [0.0, 1.0, 0.0]);
@@ -152,8 +150,7 @@ impl AnimationManager {
 				})
 				.collect(): Vec<_>;
 
-			mb.add_geometry(&verts, 0..verts.len() as u16);
-			mb.commit(core);
+			core.update_basic_mesh(bone_mesh, &verts);
 		}
 
 		let bones = animation_data.bones.iter()

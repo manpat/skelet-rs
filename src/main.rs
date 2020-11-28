@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 					let pos = util::intersect_ground(near_plane_pos, gfx.camera.forward());
 					let rot = Quat::new(Vec3::from_y(1.0), rand::random::<f32>() * PI * 2.0);
 
-					instances.push(Instance {pos, rot, anim_time: 0.0});
+					instances.push(Instance {pos, rot, anim_time: rand::random::<f32>() * 20.0});
 				}
 
 				WindowEvent::CloseRequested => {
@@ -118,18 +118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		gfx.anim.draw(&mut gfx.core, &gfx.camera);
 		gfx.anim.clear();
 
-		// gfx.core.use_shader(basic_shader);
-		// gfx.core.set_uniform_mat4("u_proj_view", &gfx.camera.projection_view());
-		// gfx.core.draw_mesh(marker_mesh);
-
-		// gfx.core.use_shader(weighted_shader);
-		// gfx.core.set_depth_test(false);
-		// for Instance{bone_offset, transform, ..} in instances.iter() {
-		// 	gfx.core.set_uniform_i32("u_bone_offset", (*bone_offset) as _);
-		// 	gfx.core.set_uniform_mat4("u_object", &transform);
-		// 	gfx.core.draw_mesh_lines(bone_line_mesh);
-		// }
-		// gfx.core.set_depth_test(true);
+		gfx.debug.draw(&mut gfx.core, &gfx.camera);
 
 		window.swap();
 	}
