@@ -51,8 +51,8 @@ impl Debug {
 		self.points.clear();
 		self.lines.clear();
 
-		core.draw_mesh_points(self.points_mesh);
 		core.draw_mesh_lines(self.lines_mesh);
+		core.draw_mesh_points(self.points_mesh);
 
 		core.set_depth_test(true);
 	}

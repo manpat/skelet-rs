@@ -9,6 +9,19 @@ use super::mesh::*;
 use super::texture_buffer::*;
 
 
+pub enum BlendMode {
+	None,
+	Alpha,
+	PremultipliedAlpha,
+	Add, // Linear Dodge
+	Subtract,
+	Multiply,
+
+	Darken,
+	Lighten,
+}
+
+
 pub struct Core {
 	capabilities: Capabilities,
 
@@ -64,6 +77,39 @@ impl Core {
 			} else {
 				gl::Disable(gl::DEPTH_TEST)
 			}
+		}
+	}
+
+	pub fn set_color_write(&mut self, enable: bool) {
+		unsafe {
+			let v = if enable { gl::TRUE } else { gl::FALSE };
+			gl::ColorMask(v, v, v, v);
+		}
+	}
+
+	pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		use self::BlendMode::*;
+
+		let (equation, source, target) = match blend_mode {
+			None => unsafe {
+				gl::Disable(gl::BLEND);
+				return
+			},
+
+			Alpha => (gl::FUNC_ADD, gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA),
+			PremultipliedAlpha => (gl::FUNC_ADD, gl::ONE, gl::ONE_MINUS_SRC_ALPHA),
+			Add => (gl::FUNC_ADD, gl::ONE, gl::ONE),
+			Subtract => (gl::FUNC_REVERSE_SUBTRACT, gl::ONE, gl::ONE),
+			Multiply => (gl::FUNC_ADD, gl::DST_COLOR, gl::ZERO),
+
+			Darken => (gl::MIN, gl::ONE, gl::ONE),
+			Lighten => (gl::MAX, gl::ONE, gl::ONE),
+		};
+		
+		unsafe {
+			gl::Enable(gl::BLEND);
+			gl::BlendEquation(equation);
+			gl::BlendFunc(source, target);
 		}
 	}
 

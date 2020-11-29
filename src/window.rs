@@ -6,6 +6,9 @@ use glutin::event_loop::EventLoop;
 pub struct Window {
 	context: glutin::WindowedContext<glutin::PossiblyCurrent>,
 	event_loop: EventLoop<()>,
+	focussed: bool,
+	should_capture: bool,
+	retry_capture: bool,
 }
 
 
@@ -32,6 +35,9 @@ impl Window {
 		Ok(Window {
 			context,
 			event_loop,
+			focussed: true,
+			should_capture: false,
+			retry_capture: false,
 		})
 	}
 
@@ -45,15 +51,23 @@ impl Window {
 
 	pub fn dpi(&self) -> f64 {
 		self.context.window().scale_factor()
-	} 
+	}
 
-	pub fn poll_events<F>(&mut self, mut f: F) where F: FnMut(glutin::event::WindowEvent<'_>) {
+	pub fn focussed(&self) -> bool { self.focussed }
+
+	pub fn poll_events<F>(&mut self, mut f: F) where F: FnMut(glutin::event::Event<'_, ()>) {
 		use glutin::platform::desktop::EventLoopExtDesktop;
-		use glutin::event::Event;
+		use glutin::event::{Event, WindowEvent};
 
-		self.event_loop.run_return(move |event, _target, control_flow| {
+		let mut focus_event = None;
+
+		self.event_loop.run_return(|event, _target, control_flow| {
 			match event {
-				Event::WindowEvent{event, ..} => {
+				Event::WindowEvent{event: WindowEvent::Focused(focussed), ..} => {
+					focus_event = Some(focussed);
+				}
+
+				Event::WindowEvent{..} | Event::DeviceEvent{..} => {
 					f(event);
 				}
 
@@ -63,6 +77,25 @@ impl Window {
 				_ => {}
 			}
 		});
+
+		// if the focus state has changed, make sure we're grabbing or releasing as appropriate
+		if let Some(focus) = focus_event {
+			self.focussed = focus;
+			self.retry_capture = true;
+		}
+
+		if self.retry_capture {
+			let capture = self.should_capture && self.focussed;
+			if self.context.window().set_cursor_grab(capture).is_ok() {
+				self.context.window().set_cursor_visible(!capture);
+				self.retry_capture = false;
+			}
+		}
+	}
+
+	pub fn set_cursor_capture(&mut self, enable: bool) {
+		self.should_capture = enable;
+		self.retry_capture = true;
 	}
 
 	pub fn swap(&mut self) {

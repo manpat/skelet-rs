@@ -8,11 +8,12 @@ pub mod mesh_builder;
 pub mod camera;
 pub mod animation;
 
+use crate::prelude::*;
+
 
 pub struct Gfx {
 	pub core: core::Core,
 	pub debug: debug::Debug,
-	pub camera: camera::Camera,
 	pub anim: animation::AnimationManager,
 }
 
@@ -21,17 +22,17 @@ impl Gfx {
 	pub fn new() -> Gfx {
 		let mut core = core::Core::new();
 		core.set_depth_test(true);
+		core.set_blend_mode(core::BlendMode::Alpha);
 
 		unsafe {
 			let mut vao = 0;
 			gl::GenVertexArrays(1, &mut vao);
 			gl::BindVertexArray(vao);
-
-			gl::Enable(gl::BLEND);
-			gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 			
 			gl::PointSize(3.0);
-			gl::LineWidth(2.0);
+			gl::LineWidth(3.0);
+
+			gl::DepthFunc(gl::LEQUAL);
 
 			gl::DebugMessageCallback(Some(gl_message_callback), std::ptr::null());
 			gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
@@ -61,7 +62,6 @@ impl Gfx {
 		Gfx {
 			core,
 			debug,
-			camera: camera::Camera::new(),
 			anim,
 		}
 	}
