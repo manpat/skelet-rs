@@ -453,14 +453,14 @@ fn draw_nav_mesh(debug: &mut gfx::debug::Debug, nav: &NavMesh) {
 	for &NavFace{start_edge, center, plane} in nav.faces.iter() {
 		debug.point(center, Color::rgb(1.0, 1.0, 0.5));
 
-		let basis_length = 0.5;
-		let basis_u = plane.project(center + Vec3::from_x(basis_length));
-		let basis_v = plane.project(center + Vec3::from_z(-basis_length));
+		// let basis_length = 0.5;
+		// let basis_u = plane.project(center + Vec3::from_x(basis_length));
+		// let basis_v = plane.project(center + Vec3::from_z(-basis_length));
 
-		debug.line(center, basis_u, Color::rgb(0.2, 0.5, 0.5));
-		debug.line(center, basis_v, Color::rgb(0.2, 0.5, 0.5));
+		// debug.line(center, basis_u, Color::rgb(0.2, 0.5, 0.5));
+		// debug.line(center, basis_v, Color::rgb(0.2, 0.5, 0.5));
 
-		debug.line(center, center + plane.normal * basis_length, Color::rgb(0.5, 1.0, 1.0));
+		// debug.line(center, center + plane.normal * basis_length, Color::rgb(0.5, 1.0, 1.0));
 
 		for (edge_idx, edge) in nav.iter_edge_loop(start_edge) {
 			let (pos_a, pos_b) = nav.edge_vertex_positions(edge_idx);
@@ -481,16 +481,6 @@ fn draw_nav_mesh(debug: &mut gfx::debug::Debug, nav: &NavMesh) {
 			debug.line(pos_b, pos_b - edge_dir * 0.1 - Vec3::from_y(0.1), edge_col);
 		}
 	}
-}
-
-
-fn projected_plane_rejection(wall_start: Vec2, wall_end: Vec2, point: Vec2) -> Vec2 {
-	let wall_diff = wall_end - wall_start;
-	let wall_normal = wall_diff.normalize().perp();
-
-	let distance = wall_normal.dot(point - wall_start);
-
-	-wall_normal * distance.max(0.0)
 }
 
 
@@ -556,6 +546,16 @@ fn get_nearest_projected_nav_face(nav: &NavMesh, pos: Vec3) -> Option<usize> {
 }
 
 
+fn projected_plane_rejection(wall_start: Vec2, wall_end: Vec2, point: Vec2) -> Vec2 {
+	let wall_diff = wall_end - wall_start;
+	let wall_normal = wall_diff.normalize().perp();
+
+	let distance = wall_normal.dot(point - wall_start);
+
+	-wall_normal * distance.max(0.0)
+}
+
+
 fn slide_player_along_barriers(
 	nav: &NavMesh, current_face_idx: usize,
 	start_pos: Vec2, mut delta: Vec2) -> Vec2
@@ -588,19 +588,37 @@ fn slide_player_along_barriers(
 			prev_incoming_edge = &nav.edges[prev_incoming_edge_idx];
 		}
 
+		let incoming_barrier_idx = prev_incoming_edge_idx;
+
+
 		// Test concavity - if vertex is concave then collide with barriers as planes
-		let incoming_normal = nav.projected_edge_normal(prev_incoming_edge_idx);
+		let incoming_normal = nav.projected_edge_normal(incoming_barrier_idx);
 		let outgoing_normal = nav.projected_edge_normal(outgoing_barrier_idx);
 
 		if incoming_normal.perp().dot(outgoing_normal) <= 0.0 {
-			let (va, vb) = nav.projected_edge_vertex_positions(prev_incoming_edge_idx);
+			let (va, vb) = nav.projected_edge_vertex_positions(incoming_barrier_idx);
 			delta += projected_plane_rejection(va, vb, start_pos + delta);
 
 			let (va, vb) = nav.projected_edge_vertex_positions(outgoing_barrier_idx);
 			delta += projected_plane_rejection(va, vb, start_pos + delta);
-		}
+		} else {
+			// Vertex is concave
+			let end_pos = start_pos + delta;
+			let vertex_delta = end_pos - vertex.position.to_xz();
 
-		// TODO: deal with weirdness on coplanar barriers and slightly convex vertices
+			let incoming_dist = incoming_normal.dot(vertex_delta);
+			let outgoing_dist = outgoing_normal.dot(vertex_delta);
+
+			// If endpoint is outside *both* barriers, then adjust by the least required distance
+			// Just enough to allow this test to pass again
+			if incoming_dist >= 0.0 && outgoing_dist >= 0.0 {
+				if incoming_dist < outgoing_dist {
+					delta -= incoming_normal * incoming_dist;
+				} else {
+					delta -= outgoing_normal * outgoing_dist;
+				}
+			}
+		}
 	}
 
 	start_pos + delta
