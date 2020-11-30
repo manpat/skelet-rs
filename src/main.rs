@@ -602,7 +602,7 @@ fn slide_player_along_barriers(
 			let (va, vb) = nav.projected_edge_vertex_positions(outgoing_barrier_idx);
 			delta += projected_plane_rejection(va, vb, start_pos + delta);
 		} else {
-			// Vertex is concave
+			// Vertex is convex
 			let end_pos = start_pos + delta;
 			let vertex_delta = end_pos - vertex.position.to_xz();
 
