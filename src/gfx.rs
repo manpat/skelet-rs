@@ -8,9 +8,6 @@ pub mod mesh_builder;
 pub mod camera;
 pub mod animation;
 
-use crate::prelude::*;
-
-
 pub struct Gfx {
 	pub core: core::Core,
 	pub debug: debug::Debug,
