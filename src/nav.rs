@@ -51,7 +51,7 @@ impl NavMesh {
 				outgoing_edge: 0,
 				outgoing_barrier: None
 			})
-			.collect();
+			.collect(): Vec<_>;
 
 		let mut edges = Vec::with_capacity(mesh_data.indices.len());
 		let mut faces = Vec::with_capacity(mesh_data.indices.len() / 3);
@@ -61,9 +61,9 @@ impl NavMesh {
 			let face = faces.len();
 
 			let points = [
-				mesh_data.positions[triangle[0] as usize],
-				mesh_data.positions[triangle[1] as usize],
-				mesh_data.positions[triangle[2] as usize],
+				vertices[triangle[0] as usize].position,
+				vertices[triangle[1] as usize].position,
+				vertices[triangle[2] as usize].position,
 			];
 
 			let plane = Plane::from_points(points[0], points[1], points[2]);
@@ -122,7 +122,15 @@ impl NavMesh {
 			let vert_pair = (edge.vertex, edge_next.vertex);
 
 			if let Some(dupli_edge_idx) = vert_pair_to_edge.insert(vert_pair, edge_idx) {
-				panic!("Duplicate half edge! {}, {}", dupli_edge_idx, edge_idx);
+				let vert_a = &self.vertices[vert_pair.0];
+				let vert_b = &self.vertices[vert_pair.1];
+
+				panic!(
+					"Duplicate half edge! {}, {}\nBetween vertices at {:?} and {:?}\n{:?}\n{:?}",
+					dupli_edge_idx, edge_idx,
+					vert_a.position, vert_b.position,
+					edge, self.edges[dupli_edge_idx]
+				);
 			}
 		}
 

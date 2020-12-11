@@ -1,6 +1,6 @@
 #![deny(rust_2018_idioms, future_incompatible)]
 #![feature(type_ascription)]
-#![feature(clamp)]
+#![feature(clamp, str_split_once)]
 
 pub mod prelude;
 pub mod gfx;
@@ -10,8 +10,6 @@ pub mod nav;
 pub mod player_controller;
 
 use prelude::*;
-// use glutin::dpi::PhysicalPosition;
-use gfx::vertex::ColorVertex;
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let mut window = window::Window::new().expect("Failed to create window");
@@ -27,21 +25,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 	);
 
 	let shader = gfx.core.new_shader(
-		include_str!("shaders/basic_vert.glsl"),
-		include_str!("shaders/frag.glsl"),
-		&["a_vertex", "a_color"]
+		include_str!("shaders/fog_vert.glsl"),
+		include_str!("shaders/fog_frag.glsl"),
+		&["a_vertex", "a_color", "a_emission"]
 	);
 
 	let project_data = std::fs::read("assets/navtest.toy")?;
 	let project = toy::load(&project_data)?;
+	let scene = project.find_scene("ladder_test")
+		.expect("Couldn't find scene 'ladder_test'");
+
+	if let Some(ent) = scene.entities().find(|e| e.name.starts_with("PLY_")) {
+		camera.set_position(ent.position);
+		camera.set_yaw(ent.rotation.yaw());
+	}
 
 	let static_mesh = gfx.core.new_mesh();
 
 	{
 		let mut mb = gfx::mesh_builder::MeshBuilder::new(static_mesh);
 
-		for entity in project.entities() {
-			if entity.name == "nav" { continue }
+		for entity in scene.entities() {
+			if entity.name.starts_with("NAV_") { continue }
 			if entity.name.starts_with('_') { continue }
 
 			let mesh_data = match entity.mesh_data() {
@@ -50,9 +55,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 			};
 
 			let transform = entity.transform();
-			let color = Color::white();
+
+			let color_data = if let Some(color_data) = mesh_data.color_data(toy::DEFAULT_COLOR_DATA_NAME) {
+				either::Either::Left(color_data.data.iter().cloned())
+			} else {
+				either::Either::Right(std::iter::repeat(Vec4::splat(1.0)))
+			};
+
+			let emission_data = if let Some(color_data) = mesh_data.color_data("emission") {
+				either::Either::Left(color_data.data.iter().map(|v| v.x))
+			} else {
+				either::Either::Right(std::iter::repeat(0.0))
+			};
+
 			let verts = mesh_data.positions.iter()
-				.map(|&pos| ColorVertex::new(transform * pos, color.into()))
+				.zip(color_data)
+				.zip(emission_data)
+				.map(|((&pos, color), emission)| Vertex::new(transform * pos, color, emission))
 				.collect(): Vec<_>;
 
 			mb.add_geometry(&verts, &mesh_data.indices);
@@ -62,11 +81,34 @@ fn main() -> Result<(), Box<dyn Error>> {
 	}
 
 	let nav_mesh = {
-		let nav_ent = project.find_entity("nav").expect("can't find nav");
+		let nav_ent = scene.entities().find(|e| e.name.starts_with("NAV_")).expect("can't find nav");
 		nav::NavMesh::from_entity(nav_ent)
 	};
 
 	// println!("nav mesh {:#?}", nav_mesh);
+
+	struct Teleporter {
+		name: String,
+		target: String,
+		pos: Vec3,
+	}
+
+	let mut teleporters = std::collections::HashMap::new();
+
+	{
+		for entity in scene.entities() {
+			if !entity.name.starts_with("TP_") { continue }
+
+			let connection_code = &entity.name[3..];
+			let (name, target) = connection_code.split_once('_')
+				.expect("TP name missing second underscore");
+
+			let name = name.to_owned();
+			let target = target.to_owned();
+
+			teleporters.insert(name.clone(), Teleporter {name, target, pos: entity.position});
+		}
+	}
 
 
 	let mut player_controller = player_controller::PlayerController::new();
@@ -122,6 +164,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 							Some(VirtualKeyCode::D) => { player_controller.go_right = down; }
 							Some(VirtualKeyCode::LShift) => { player_controller.go_fast = down; }
 
+							Some(VirtualKeyCode::F) if down => {
+								let player_pos = camera.position();
+
+								if let Some((tp_source, tp_target)) = teleporters.values()
+									.map(|t| (t, (t.pos-player_pos).length()))
+									.filter(|&(_, dist)| dist < 3.0)
+									.min_by_key(|(_, dist)| dist.ordify())
+									.and_then(|(t, _)| teleporters.get(&t.target).map(|t2| (t, t2)))
+								{
+									let diff = player_pos - tp_source.pos;
+									let new_pos = tp_target.pos + diff;
+
+									let new_face = player_controller::get_approx_nearest_nav_face(&nav_mesh, new_pos);
+
+									player_controller.set_face(new_face);
+									camera.set_position(new_pos);
+								}
+							}
+
 							_ => {}
 						}
 					}
@@ -154,12 +215,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 		gfx.core.use_shader(shader);
 		gfx.core.set_uniform_mat4("u_proj_view", &camera.projection_view());
+		gfx.core.set_uniform_mat4("u_view", &camera.view_matrix());
 
 		gfx.core.set_blend_mode(gfx::core::BlendMode::None);
 		gfx.core.draw_mesh(static_mesh);
 
-		draw_nav_mesh(&mut gfx.debug, &nav_mesh);
-		draw_nav_intersect(&mut gfx.debug, &nav_mesh, &camera, player_controller.nav_face());
+		// draw_nav_mesh(&mut gfx.debug, &nav_mesh);
+		// draw_nav_intersect(&mut gfx.debug, &nav_mesh, &camera, player_controller.nav_face());
+
+		// for teleporter in teleporters.values() {
+		// 	gfx.debug.point(teleporter.pos, Color::rgb(1.0, 0.0, 1.0));
+
+		// 	let target = teleporters.get(&teleporter.target)
+		// 		.expect("Teleporter missing target!");
+
+		// 	gfx.debug.line(teleporter.pos, target.pos, Color::rgb(0.7, 0.0, 0.7));
+		// }
 
 		gfx.anim.draw(&mut gfx.core, &camera);
 		gfx.anim.clear();
@@ -258,3 +329,27 @@ fn draw_nav_intersect(debug: &mut gfx::debug::Debug, nav: &nav::NavMesh, camera:
 		}
 	}
 }
+
+
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct Vertex {
+	pub pos: Vec3,
+	pub color: Vec4,
+	pub emission: f32,
+}
+
+impl Vertex {
+	pub fn new(pos: Vec3, color: Vec4, emission: f32) -> Self {
+		Vertex{pos, color, emission}
+	}
+}
+
+impl gfx::vertex::Vertex for Vertex {
+	fn descriptor() -> gfx::vertex::Descriptor {
+		gfx::vertex::Descriptor::from(&[3, 4, 1])
+	}
+}
+
+

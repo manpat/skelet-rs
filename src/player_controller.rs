@@ -38,6 +38,10 @@ impl PlayerController {
 
 	pub fn nav_face(&self) -> Option<NavFaceID> { self.current_nav_face }
 
+	pub fn set_face(&mut self, face_id: NavFaceID) {
+		self.current_nav_face = Some(face_id);
+	}
+
 	pub fn toggle_fly_mode(&mut self) {
 		self.fly_mode = !self.fly_mode;
 
@@ -47,7 +51,8 @@ impl PlayerController {
 	}
 
 	pub fn update(&mut self, camera: &mut Camera, nav_mesh: &NavMesh) {
-		let speed = if self.go_fast { 6.0 } else { 3.0 } / 60.0;
+		let speed = if self.go_fast { 10.0 } else { 6.0 } / 60.0;
+		let speed = speed * if self.fly_mode { 3.0 } else { 1.0 };
 
 		if self.fly_mode {
 			let fwd = camera.orientation().forward();
@@ -100,7 +105,7 @@ impl PlayerController {
 }
 
 
-fn get_approx_nearest_nav_face(nav: &NavMesh, pos: Vec3) -> NavFaceID {
+pub fn get_approx_nearest_nav_face(nav: &NavMesh, pos: Vec3) -> NavFaceID {
 	let (vertex_dist, nearest_vertex) = nav.vertices.iter()
 		.map(|v| ((v.position-pos).length(), v))
 		.min_by_key(|(dist, _)| dist.ordify())
