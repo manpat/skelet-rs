@@ -20,8 +20,8 @@ pub struct Debug {
 impl Debug {
 	pub fn new(core: &mut Core) -> Debug {
 		let shader = core.new_shader(
-			include_str!("../shaders/basic_vert.glsl"),
-			include_str!("../shaders/frag.glsl"),
+			include_str!("../shaders/color_vert.glsl"),
+			include_str!("../shaders/color_frag.glsl"),
 			&["a_vertex", "a_color"]
 		);
 
@@ -40,21 +40,24 @@ impl Debug {
 	}
 
 	pub fn draw(&mut self, core: &mut Core, camera: &Camera) {
-		core.set_depth_test(false);
+		core.set_depth(None);
 
 		core.use_shader(self.shader);
 		core.set_uniform_mat4("u_proj_view", &camera.projection_view());
 
-		core.update_basic_mesh(self.points_mesh, &self.points);
-		core.update_basic_mesh(self.lines_mesh, &self.lines);
+		if !self.points.is_empty() {
+			core.update_basic_mesh(self.points_mesh, &self.points);
+			core.draw_mesh_points(self.points_mesh);
+			self.points.clear();
+		}
 
-		self.points.clear();
-		self.lines.clear();
+		if !self.lines.is_empty() {
+			core.update_basic_mesh(self.lines_mesh, &self.lines);
+			core.draw_mesh_lines(self.lines_mesh);
+			self.lines.clear();
+		}
 
-		core.draw_mesh_lines(self.lines_mesh);
-		core.draw_mesh_points(self.points_mesh);
-
-		core.set_depth_test(true);
+		core.set_depth(super::core::DepthFunc::default());
 	}
 
 	pub fn point(&mut self, world: Vec3, color: Color) {

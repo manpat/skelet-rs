@@ -13,5 +13,6 @@ glutin = "0.25"
 
 common = { git="https://github.com/manpat/common-rs.git" }
 toy = { git="https://github.com/manpat/toy-rs.git" }
+either = "1.6.1"
 
 # toy = { path="../toy-rs" }

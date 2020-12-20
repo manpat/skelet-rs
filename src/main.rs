@@ -6,6 +6,7 @@ pub mod prelude;
 pub mod gfx;
 pub mod window;
 pub mod util;
+pub mod view;
 pub mod nav;
 pub mod player_controller;
 
@@ -20,11 +21,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	let mut camera = gfx::camera::Camera::new(
 		gfx::camera::ProjectionMode::Perspective { fov_y: PI/3.0 },
-		// gfx::camera::ViewMode::Orbit { distance: 10.0 }
 		gfx::camera::ViewMode::FirstPerson
 	);
 
-	let shader = gfx.core.new_shader(
+	let scene_shader = gfx.core.new_shader(
 		include_str!("shaders/fog_vert.glsl"),
 		include_str!("shaders/fog_frag.glsl"),
 		&["a_vertex", "a_color", "a_emission"]
@@ -32,53 +32,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	let project_data = std::fs::read("assets/navtest.toy")?;
 	let project = toy::load(&project_data)?;
-	let scene = project.find_scene("ladder_test")
-		.expect("Couldn't find scene 'ladder_test'");
+	let scene = project.find_scene("main")
+		.expect("Couldn't find scene 'main'");
 
 	if let Some(ent) = scene.entities().find(|e| e.name.starts_with("PLY_")) {
 		camera.set_position(ent.position);
 		camera.set_yaw(ent.rotation.yaw());
 	}
 
-	let static_mesh = gfx.core.new_mesh();
-
-	{
-		let mut mb = gfx::mesh_builder::MeshBuilder::new(static_mesh);
-
-		for entity in scene.entities() {
-			if entity.name.starts_with("NAV_") { continue }
-			if entity.name.starts_with('_') { continue }
-
-			let mesh_data = match entity.mesh_data() {
-				Some(md) => md,
-				None => continue,
-			};
-
-			let transform = entity.transform();
-
-			let color_data = if let Some(color_data) = mesh_data.color_data(toy::DEFAULT_COLOR_DATA_NAME) {
-				either::Either::Left(color_data.data.iter().cloned())
-			} else {
-				either::Either::Right(std::iter::repeat(Vec4::splat(1.0)))
-			};
-
-			let emission_data = if let Some(color_data) = mesh_data.color_data("emission") {
-				either::Either::Left(color_data.data.iter().map(|v| v.x))
-			} else {
-				either::Either::Right(std::iter::repeat(0.0))
-			};
-
-			let verts = mesh_data.positions.iter()
-				.zip(color_data)
-				.zip(emission_data)
-				.map(|((&pos, color), emission)| Vertex::new(transform * pos, color, emission))
-				.collect(): Vec<_>;
-
-			mb.add_geometry(&verts, &mesh_data.indices);
-		}
-
-		mb.commit(&mut gfx.core);
-	}
+	let scene_static_mesh = build_scene_mesh(&mut gfx.core, scene);
 
 	let nav_mesh = {
 		let nav_ent = scene.entities().find(|e| e.name.starts_with("NAV_")).expect("can't find nav");
@@ -112,6 +74,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 
 	let mut player_controller = player_controller::PlayerController::new();
+
+	let mut view_screen_view = view::ViewScreen::new(&mut gfx.core, &project);
 
 	let mut running = true;
 
@@ -213,12 +177,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 		camera.update(window_size);
 		player_controller.update(&mut camera, &nav_mesh);
 
-		gfx.core.use_shader(shader);
+		gfx.core.use_shader(scene_shader);
 		gfx.core.set_uniform_mat4("u_proj_view", &camera.projection_view());
 		gfx.core.set_uniform_mat4("u_view", &camera.view_matrix());
 
 		gfx.core.set_blend_mode(gfx::core::BlendMode::None);
-		gfx.core.draw_mesh(static_mesh);
+		gfx.core.draw_mesh(scene_static_mesh);
 
 		// draw_nav_mesh(&mut gfx.debug, &nav_mesh);
 		// draw_nav_intersect(&mut gfx.debug, &nav_mesh, &camera, player_controller.nav_face());
@@ -234,6 +198,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 		gfx.anim.draw(&mut gfx.core, &camera);
 		gfx.anim.clear();
+
+		view_screen_view.draw(&mut gfx.core, &camera);
 
 		gfx.debug.draw(&mut gfx.core, &camera);
 
@@ -353,3 +319,50 @@ impl gfx::vertex::Vertex for Vertex {
 }
 
 
+
+
+pub fn build_scene_mesh(core: &mut gfx::core::Core, scene: toy::SceneRef<'_>) -> gfx::mesh::MeshID<Vertex> {
+	let mesh_id = core.new_mesh();
+	let mut mb = gfx::mesh_builder::MeshBuilder::new(mesh_id);
+
+	for entity in scene.entities() {
+		if entity.name.starts_with('_') { continue }
+
+		// Skip special entities
+		if let Some((prefix, _)) = entity.name.split_once('_') {
+			if prefix.chars().all(|c| c.is_ascii_uppercase()) {
+				continue;
+			}
+		}
+
+		let mesh_data = match entity.mesh_data() {
+			Some(md) => md,
+			None => continue,
+		};
+
+		let transform = entity.transform();
+
+		let color_data = if let Some(color_data) = mesh_data.color_data(toy::DEFAULT_COLOR_DATA_NAME) {
+			either::Either::Left(color_data.data.iter().cloned())
+		} else {
+			either::Either::Right(std::iter::repeat(Vec4::splat(1.0)))
+		};
+
+		let emission_data = if let Some(color_data) = mesh_data.color_data("emission") {
+			either::Either::Left(color_data.data.iter().map(|v| v.x))
+		} else {
+			either::Either::Right(std::iter::repeat(0.0))
+		};
+
+		let verts = mesh_data.positions.iter()
+			.zip(color_data)
+			.zip(emission_data)
+			.map(|((&pos, color), emission)| Vertex::new(transform * pos, color, emission))
+			.collect(): Vec<_>;
+
+		mb.add_geometry(&verts, &mesh_data.indices);
+	}
+
+	mb.commit(core);
+	mesh_id
+}

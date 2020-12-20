@@ -18,7 +18,7 @@ pub struct Gfx {
 impl Gfx {
 	pub fn new() -> Gfx {
 		let mut core = core::Core::new();
-		core.set_depth_test(true);
+		core.set_depth(core::DepthFunc::default());
 		core.set_blend_mode(core::BlendMode::Alpha);
 
 		unsafe {
@@ -28,8 +28,6 @@ impl Gfx {
 			
 			gl::PointSize(3.0);
 			gl::LineWidth(3.0);
-
-			gl::DepthFunc(gl::LEQUAL);
 
 			gl::DebugMessageCallback(Some(gl_message_callback), std::ptr::null());
 			gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);

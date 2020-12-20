@@ -158,7 +158,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.1"
-source = "git+https://github.com/manpat/common-rs.git#6fccf333670ce7673ea9f3ab52876eee3047ff2b"
+source = "git+https://github.com/manpat/common-rs.git#1524e05654f0f34655f6d806fbd1dd789e53128d"
 dependencies = [
  "rand 0.4.6",
 ]
@@ -311,6 +311,12 @@ name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
+
+[[package]]
+name = "either"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
 name = "failure"
@@ -1023,6 +1029,7 @@ name = "skelet"
 version = "0.1.0"
 dependencies = [
  "common",
+ "either",
  "failure",
  "gl",
  "glutin",

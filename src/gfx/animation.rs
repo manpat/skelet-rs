@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use crate::gfx;
 
-use super::core::Core;
+use super::core::{self, Core};
 use super::camera::Camera;
 use super::shader::ShaderID;
 use super::mesh::{MeshID, BasicMeshID};
@@ -60,7 +60,7 @@ impl AnimationManager {
 
 		let shader = core.new_shader(
 			include_str!("../shaders/weighted_vert.glsl"),
-			include_str!("../shaders/frag.glsl"),
+			include_str!("../shaders/color_frag.glsl"),
 			&["a_vertex", "a_color", "a_bone_indices", "a_bone_weights"]
 		);
 
@@ -229,7 +229,7 @@ impl AnimationManager {
 
 		// debug bone viz
 		if self.draw_bone_debug {
-			core.set_depth_test(false);
+			core.set_depth(None);
 			for (AnimatedMeshInstance{transform, animation, ..}, bone_offset) in self.instances.iter().zip(&bone_offsets) {
 				let AnimationID(mesh, _) = animation;
 				let animated_mesh_data = self.mesh_animations.get(mesh)
@@ -239,7 +239,7 @@ impl AnimationManager {
 				core.set_uniform_mat4("u_object", &transform);
 				core.draw_mesh_lines(animated_mesh_data.bone_mesh);
 			}
-			core.set_depth_test(true);
+			core.set_depth(core::DepthFunc::default());
 		}
 	}
 }

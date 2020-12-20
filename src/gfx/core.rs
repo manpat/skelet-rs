@@ -22,6 +22,17 @@ pub enum BlendMode {
 }
 
 
+pub enum DepthFunc {
+	LessEqual,
+	Equal,
+	Always,
+}
+
+impl Default for DepthFunc {
+	fn default() -> Self { DepthFunc::LessEqual }
+}
+
+
 pub struct Core {
 	capabilities: Capabilities,
 
@@ -70,21 +81,45 @@ impl Core {
 		}
 	}
 
-	pub fn set_depth_test(&mut self, enable: bool) {
-		unsafe {
-			if enable {
-				gl::Enable(gl::DEPTH_TEST)
-			} else {
-				gl::Disable(gl::DEPTH_TEST)
-			}
-		}
-	}
-
 	pub fn set_color_write(&mut self, enable: bool) {
 		unsafe {
 			let v = if enable { gl::TRUE } else { gl::FALSE };
 			gl::ColorMask(v, v, v, v);
 		}
+	}
+
+	pub fn set_stencil(&mut self, params: impl Into<Option<StencilParams>>) {
+		unsafe {
+			if let Some(params) = params.into() {
+				gl::Enable(gl::STENCIL_TEST);
+				gl::StencilFunc(params.write_condition, params.reference as _, 0xff);
+				gl::StencilOp(params.stencil_fail_op, params.depth_fail_op, params.pass_op);
+				gl::StencilMask(if params.write_mask { 0xFF } else { 0 });
+
+			} else {
+				gl::Disable(gl::STENCIL_TEST);
+				gl::StencilMask(0xFF);
+			}
+		}
+	}
+
+	pub fn set_depth(&mut self, params: impl Into<Option<DepthFunc>>) {
+		unsafe {
+			if let Some(params) = params.into() {
+				let depth_func = match params {
+					DepthFunc::LessEqual => gl::LEQUAL,
+					DepthFunc::Equal => gl::EQUAL,
+					DepthFunc::Always => gl::ALWAYS,
+				};
+
+				gl::Enable(gl::DEPTH_TEST);
+				gl::DepthFunc(depth_func);
+
+			} else {
+				gl::Disable(gl::DEPTH_TEST);
+				// gl::DepthMask(0xFF);
+			}
+		}		
 	}
 
 	pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
@@ -155,6 +190,11 @@ impl Core {
 	pub fn set_uniform_i32(&mut self, name: &str, value: i32) {
 		let loc = self.get_uniform_location(name);
 		unsafe { gl::Uniform1i(loc, value) }
+	}
+
+	pub fn set_uniform_vec4(&mut self, name: &str, Vec4{x, y, z, w}: Vec4) {
+		let loc = self.get_uniform_location(name);
+		unsafe { gl::Uniform4f(loc, x, y, z, w) }
 	}
 
 	pub fn set_uniform_mat4(&mut self, name: &str, value: &Mat4) {
@@ -353,6 +393,44 @@ impl Capabilities {
 				gl::GetIntegerv(gl::MAX_TEXTURE_BUFFER_SIZE, &mut v);
 				v as usize
 			},
+		}
+	}
+}
+
+
+#[derive(Debug, Clone, Copy)]
+pub struct StencilParams {
+	pub write_condition: u32,
+	pub write_mask: bool,
+	pub reference: u8,
+
+	pub stencil_fail_op: u32,
+	pub depth_fail_op: u32,
+	pub pass_op: u32,
+}
+
+impl StencilParams {
+	pub fn write_on_depth_pass(reference: u8) -> StencilParams {
+		StencilParams {
+			write_condition: gl::ALWAYS,
+			write_mask: true,
+			reference,
+
+			stencil_fail_op: gl::KEEP,
+			depth_fail_op: gl::KEEP,
+			pass_op: gl::REPLACE,
+		}
+	}
+
+	pub fn stencil_equal(reference: u8) -> StencilParams {
+		StencilParams {
+			write_condition: gl::EQUAL,
+			write_mask: false,
+			reference,
+
+			stencil_fail_op: gl::KEEP,
+			depth_fail_op: gl::KEEP,
+			pass_op: gl::KEEP,
 		}
 	}
 }

@@ -24,6 +24,7 @@ impl Window {
 			.with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (3, 2)))
 			.with_gl_profile(glutin::GlProfile::Core)
 			.with_gl_debug_flag(true)
+			.with_stencil_buffer(8)
 			.with_vsync(true)
 			.build_windowed(window, &event_loop)?;
 
