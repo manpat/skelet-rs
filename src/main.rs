@@ -8,6 +8,7 @@ pub mod window;
 pub mod util;
 pub mod view;
 pub mod nav;
+pub mod holo_volume;
 pub mod player_controller;
 
 use prelude::*;
@@ -23,6 +24,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 		gfx::camera::ProjectionMode::Perspective { fov_y: PI/3.0 },
 		gfx::camera::ViewMode::FirstPerson
 	);
+
+	camera.set_near_far(0.1, 1000.0);
 
 	let scene_shader = gfx.core.new_shader(
 		include_str!("shaders/fog_vert.glsl"),
@@ -76,6 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let mut player_controller = player_controller::PlayerController::new();
 
 	let mut view_screen_view = view::ViewScreen::new(&mut gfx.core, &project);
+	let mut lab_view = view::Lab::new(&mut gfx.core, &project);
 
 	let mut running = true;
 
@@ -200,6 +204,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		gfx.anim.clear();
 
 		view_screen_view.draw(&mut gfx.core, &camera);
+		lab_view.draw(&mut gfx.core);
 
 		gfx.debug.draw(&mut gfx.core, &camera);
 
@@ -300,19 +305,19 @@ fn draw_nav_intersect(debug: &mut gfx::debug::Debug, nav: &nav::NavMesh, camera:
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct Vertex {
+pub struct SceneVertex {
 	pub pos: Vec3,
 	pub color: Vec4,
 	pub emission: f32,
 }
 
-impl Vertex {
+impl SceneVertex {
 	pub fn new(pos: Vec3, color: Vec4, emission: f32) -> Self {
-		Vertex{pos, color, emission}
+		SceneVertex{pos, color, emission}
 	}
 }
 
-impl gfx::vertex::Vertex for Vertex {
+impl gfx::vertex::Vertex for SceneVertex {
 	fn descriptor() -> gfx::vertex::Descriptor {
 		gfx::vertex::Descriptor::from(&[3, 4, 1])
 	}
@@ -321,7 +326,7 @@ impl gfx::vertex::Vertex for Vertex {
 
 
 
-pub fn build_scene_mesh(core: &mut gfx::core::Core, scene: toy::SceneRef<'_>) -> gfx::mesh::MeshID<Vertex> {
+pub fn build_scene_mesh(core: &mut gfx::core::Core, scene: toy::SceneRef<'_>) -> gfx::mesh::MeshID<SceneVertex> {
 	let mesh_id = core.new_mesh();
 	let mut mb = gfx::mesh_builder::MeshBuilder::new(mesh_id);
 
@@ -357,7 +362,7 @@ pub fn build_scene_mesh(core: &mut gfx::core::Core, scene: toy::SceneRef<'_>) ->
 		let verts = mesh_data.positions.iter()
 			.zip(color_data)
 			.zip(emission_data)
-			.map(|((&pos, color), emission)| Vertex::new(transform * pos, color, emission))
+			.map(|((&pos, color), emission)| SceneVertex::new(transform * pos, color, emission))
 			.collect(): Vec<_>;
 
 		mb.add_geometry(&verts, &mesh_data.indices);

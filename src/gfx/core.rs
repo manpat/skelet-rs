@@ -339,6 +339,8 @@ impl<V: Vertex> MeshIDLike for MeshID<V> {
 
 	fn draw_mesh(&self, core: &mut Core, draw_mode: u32) {
 		let mesh = core.meshes.get(self.0).expect("Tried to bind invalid mesh");
+		if mesh.element_count == 0 { return }
+
 		mesh.descriptor.bind();
 
 		unsafe {
@@ -368,6 +370,8 @@ impl<V: Vertex> MeshIDLike for BasicMeshID<V> {
 
 	fn draw_mesh(&self, core: &mut Core, draw_mode: u32) {
 		let mesh = core.basic_meshes.get(self.0).expect("Tried to bind invalid mesh");
+		if mesh.vertex_count == 0 { return }
+		
 		mesh.descriptor.bind();
 
 		unsafe {
